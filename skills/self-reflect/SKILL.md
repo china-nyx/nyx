@@ -374,10 +374,18 @@ Ask yourself:
 If you discover improvements to this skill's procedure, **apply them directly** — no restart needed.
 
 **How it works:**
-1. Read the current SKILL.md at `skills/self-reflect/SKILL.md` (runtime override if it exists, otherwise built-in from source)
-2. Apply your improvements using the `edit` tool on `skills/self-reflect/SKILL.md`
-3. This writes to `$NYX_HOME/skills/self-reflect/SKILL.md` which overrides the built-in version
-4. Next self-reflect cycle automatically uses the updated version (agent.py reads SKILL.md as requirement)
+The writable runtime path is `skills/self-reflect/SKILL.md` (resolves to `$NYX_HOME/skills/self-reflect/SKILL.md`). The built-in at `src/skills/self-reflect/SKILL.md` is read-only.
+
+1. **Check if runtime override exists:**
+   ```bash
+   [ -f skills/self-reflect/SKILL.md ] && echo "exists" || echo "not exists"
+   ```
+2. **If it does NOT exist** (first time improving): use `write` to create it by copying the built-in then applying your changes:
+   ```
+   write path=skills/self-reflect/SKILL.md content=<improved full text>
+   ```
+3. **If it already exists**: use `edit` to modify it in place
+4. Next self-reflect cycle automatically uses the updated version (agent.py reads runtime first)
 
 **What to improve:**
 - Add new audit steps for areas you discovered need checking
@@ -387,7 +395,7 @@ If you discover improvements to this skill's procedure, **apply them directly** 
 - Clarify ambiguous instructions
 
 **When to use needs_upgrade instead:**
-Only return `needs_upgrade` if the improvement requires changing NYX source code (Python files in `src/`). SKILL.md changes are always done directly via `edit`.
+Only return `needs_upgrade` if the improvement requires changing NYX source code (Python files in `src/`). SKILL.md changes are always done directly via `write` or `edit`.
 
 ---
 
