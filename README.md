@@ -12,7 +12,7 @@ requirement ─▶ solver (tries with current tools + skills)
                  ├─ solved  ─▶ done
                  └─ needs_upgrade ─▶ evolver: editor edits worktree → promote → restart
 
-crash ─▶ boot catches exception → editor fixes code → promote → restart
+crash ─▶ boot catches exception → evolver (editor → promote → restart)
 ```
 
 - **Solver** attempts the task with 4 base tools (`bash`, `read`, `write`, `edit`) and
@@ -20,7 +20,7 @@ crash ─▶ boot catches exception → editor fixes code → promote → restar
 - **Editor** is the stable core — an LLM agent session in a throwaway git worktree.
   It reads requirements, studies source code, and implements changes. Only depends on core/ + sdk/.
 - **Evolver** orchestrates the editor: creates a worktree, runs the editor, promotes changes to main, restarts.
-- **Boot** starts the agent. If anything fails (import error, crash), boot invokes the editor directly to fix the code.
+- **Boot** starts the agent. If anything fails (import error, crash), boot invokes evolver to fix the code.
 
 ## Architecture
 
