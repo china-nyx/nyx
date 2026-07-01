@@ -1,31 +1,80 @@
 ---
 name: project
-description: Create and manage projects under sandbox/projects/. Use when starting a new long-running task that needs its own workspace (scripts, cron, state files). Also use to audit existing projects — checking INDEX.md accuracy, stale entries, missing READMEs. Every project gets a directory with scripts/, data/, insights/ and is registered in sandbox/projects/INDEX.md.
+description: Create and manage projects under sandbox/projects/. Use when starting a new long-running task that needs its own workspace (scripts, cron, state files). Also use to audit existing projects — checking INDEX.md accuracy, stale entries, missing READMEs. Every project gets a directory with scripts/, data/, insights/ and is registered in both sandbox/INDEX.md and sandbox/projects/INDEX.md.
 ---
 
 # Project Skill
 
 This skill guides NYX through creating, organizing, and maintaining projects under `sandbox/projects/`. Every long-running task or recurring workflow should be a project here — nothing scattered randomly across sandbox/.
 
-## Directory Structure
+## Overall Sandbox Layout
 
 ```
-sandbox/projects/
-├── INDEX.md                    ← Index of all active projects (must-read entry point)
-├── <project-name>/             ← One directory per project
-│   ├── README.md               ← What this project is, why it exists, how to run
-│   ├── progress.md             ← Progress tracking, state, next steps
-│   ├── scripts/                ← Cron triggers, automation scripts
-│   │   └── trigger.sh          ← Drops inbox task for the scheduler
-│   ├── data/                   ← State files, caches, checkpoints
-│   ├── insights/               ← Research findings, analysis reports
-│   └── archive/                ← Old sessions, completed work
-└── ...
+sandbox/
+├── INDEX.md                    ← Sandbox root index (all directories and their purpose)
+├── memory/                     ← NYX self-memory (system — identity, goals, journal)
+│   └── INDEX.md                ← Memory file index (identity.md, goals.md, ...)
+├── src → CODE                  ← Source repo symlink (read-only)
+├── task/                       ← Scheduler task state (managed by scheduler)
+├── projects/                   ← All long-running projects
+│   ├── INDEX.md                ← Index of all active projects
+│   └── <project-name>/         ← One directory per project
+├── toolbox/                    ← Shared utilities (multi-project tools only)
+└── repos/                      ← External repo clones (optional)
+    └── pi-repo/
 ```
 
-### INDEX.md Format
+### Two INDEX.md files
 
-`sandbox/projects/INDEX.md` is the single entry point — read it first to know what projects exist:
+| File | Purpose | Managed by |
+|------|---------|------------|
+| `sandbox/INDEX.md` | Top-level: lists every sandbox directory and its purpose | `project` skill |
+| `sandbox/projects/INDEX.md` | Projects only: lists each project with status, cron, description | `project` skill |
+
+Both must stay in sync. `sandbox/INDEX.md` is the first thing NYX reads to understand its workspace.
+
+## Project Directory Structure
+
+```
+sandbox/projects/<project-name>/
+├── README.md               ← What this project is, why it exists, how to run
+├── progress.md             ← Progress tracking, state, next steps
+├── scripts/                ← Cron triggers, automation scripts
+│   └── trigger.sh          ← Drops inbox task for the scheduler
+├── data/                   ← State files, caches, checkpoints
+├── insights/               ← Research findings, analysis reports
+└── archive/                ← Old sessions, completed work
+```
+
+### sandbox/INDEX.md Format
+
+```markdown
+# Sandbox Index
+
+## System Directories (managed by NYX core)
+| Directory | Purpose |
+|-----------|---------|
+| memory/   | Self-memory — identity, goals, journal, issues |
+| src → CODE | Source repo symlink (read-only) |
+| task/     | Scheduler task state |
+
+## Projects (`sandbox/projects/`)
+| Project | Status | Last Run | Cron | Description |
+|---------|--------|----------|------|-------------|
+| pi-study | active | 2025-07-01 | `0 8 * * *` | Continuous study of pi agent project |
+
+## Shared Resources
+| Directory | Purpose |
+|-----------|---------|
+| toolbox/  | Reusable utilities (API wrappers, helper scripts) |
+| repos/    | External repo clones for study/reference |
+
+## Archived Projects
+| Project | Archived | Reason |
+|---------|----------|--------|
+```
+
+### sandbox/projects/INDEX.md Format
 
 ```markdown
 # Projects Index
@@ -42,10 +91,11 @@ sandbox/projects/
 
 ## Procedure
 
-### Step 1: Read INDEX.md (if it exists)
+### Step 1: Read INDEX.md files (if they exist)
 
 ```bash
-cat sandbox/projects/INDEX.md 2>/dev/null || echo "No INDEX.md — first project"
+cat sandbox/INDEX.md 2>/dev/null || echo "No sandbox/INDEX.md — first setup"
+cat sandbox/projects/INDEX.md 2>/dev/null || echo "No projects/INDEX.md — first project"
 ```
 
 Check if a project with the same name already exists. If yes, use its directory.
@@ -81,7 +131,7 @@ Use clear, lowercase-hyphenated names (e.g., `pi-study`, `github-triage`, `weekl
 
 ### Step 4: Write Initial Progress Tracking
 
-Create `sandbox/<project-name>/progress.md`:
+Create `sandbox/projects/<project-name>/progress.md`:
 ```markdown
 # <Project Name> Progress
 
@@ -135,14 +185,14 @@ crontab -l | grep "<project-name>"
 - Scripts must be idempotent (safe to run multiple times)
 - Include error handling (`set -euo pipefail`, exit 0 on failures)
 
-### Step 7: Update INDEX.md
+### Step 7: Update Both INDEX.md Files
 
-Add the project to `sandbox/projects/INDEX.md`:
+**sandbox/projects/INDEX.md** — add the project row:
 ```markdown
 | <project-name> | active | $(date '+%Y-%m-%d') | `<cron-schedule>` | <description> |
 ```
 
-Create INDEX.md if it doesn't exist yet (use the format above).
+**sandbox/INDEX.md** — ensure the projects section lists this project. Create it if it doesn't exist (use the format above). Both INDEX files must stay in sync.
 
 ### Step 8: Clean Up Old Locations
 
@@ -159,16 +209,16 @@ If this project's files were previously scattered elsewhere:
 
 When a project is no longer active:
 1. Move its directory to `sandbox/projects/<name>/archive/` or rename with `-archived` suffix
-2. Update INDEX.md — move from active table to archived table with date and reason
+2. Update **both** INDEX.md files — move from active table to archived table with date and reason
 3. Remove its cron entry: `(crontab -l | grep -v "<project-name>") | crontab -`
 
 ## Rules
 
-- **All projects under `sandbox/projects/`** — no task directories at sandbox root level
-- **INDEX.md must stay current** — every active project listed, archived ones in the archived section
+- **All projects under `sandbox/projects/`** — no project directories at sandbox root level
+- **Both INDEX.md files must stay current** — sandbox/INDEX.md lists all dirs, projects/INDEX.md lists projects in detail
 - **Every project has README.md** — single source of truth for what it does and how to run it
 - **Cron always points to `sandbox/projects/<name>/scripts/`**
-- **No scripts leaked into toolbox** — task-specific scripts stay in their project directory
+- **No scripts leaked into toolbox** — project-specific scripts stay in their project directory
 
 ## When to Use This Skill
 
@@ -176,3 +226,4 @@ When a project is no longer active:
 - Self-reflect finds projects with missing INDEX.md entries, broken cron, or scattered files
 - Migrating existing sandbox directories into the proper project structure
 - Archiving completed or abandoned projects
+- Creating or updating sandbox/INDEX.md for the first time

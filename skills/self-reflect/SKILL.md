@@ -282,10 +282,13 @@ crontab -l 2>/dev/null | grep 'toolbox' && echo "WARNING: cron points to toolbox
 
 ### Step 4e: Audit Projects (`sandbox/projects/`)
 
-Every long-running task should be a project under `sandbox/projects/`, registered in INDEX.md.
+Every long-running task should be a project under `sandbox/projects/`, registered in both INDEX.md files.
 
 ```bash
-# Check INDEX.md exists and is readable
+# Check sandbox/INDEX.md exists
+cat sandbox/INDEX.md 2>/dev/null || echo "MISSING: sandbox/INDEX.md"
+
+# Check projects/INDEX.md exists
 cat sandbox/projects/INDEX.md 2>/dev/null || echo "MISSING: sandbox/projects/INDEX.md"
 
 # List all project directories (each should have a README.md)
@@ -301,11 +304,12 @@ done
 # Check for project directories at sandbox root (should be under projects/)
 for d in sandbox/*/; do
     name=$(basename "$d")
-    case "$name" in memory|src|task|toolbox|projects) continue ;; esac
+    case "$name" in memory|src|task|toolbox|projects|repos) continue ;; esac
     echo "POSSIBLE UNFILED PROJECT: $d — should be under sandbox/projects/"
 done
 ```
-- **Missing INDEX.md**: Create it via `project` skill
+- **Missing sandbox/INDEX.md**: Create it via `project` skill
+- **Missing projects/INDEX.md**: Create it via `project` skill
 - **Project at sandbox root** (e.g., `sandbox/pi-study/`): Migrate to `sandbox/projects/pi-study/`
 - **Project scripts in toolbox**: Move them to the appropriate `sandbox/projects/<name>/scripts/`
 - **Missing README.md** in a project: Create one via `project` skill
