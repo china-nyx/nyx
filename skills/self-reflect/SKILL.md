@@ -258,6 +258,50 @@ find sandbox/toolbox/ -type f 2>/dev/null | head -20
 
 ---
 
+### Step 4d: Audit Cron Entries
+
+Cron entries should point to task-owned scripts, never to missing files or toolbox copies.
+
+```bash
+# List all cron entries
+crontab -l 2>/dev/null
+
+# Verify each script path exists
+crontab -l 2>/dev/null | grep -oP '/sandbox/\S+' | sort -u | while read f; do
+    [ -f "$f" ] || echo "BROKEN CRON: $f"
+done
+
+# Check for cron pointing to toolbox (should point to task-owned dirs)
+crontab -l 2>/dev/null | grep 'toolbox' && echo "WARNING: cron points to toolbox — should be task-owned"
+```
+- **Broken cron** (script missing): Create the script via `task-workspace` skill, or remove the cron entry
+- **Cron pointing to toolbox**: Move the script to its task's workspace and update cron
+- **Duplicate scripts** (same file in toolbox AND task dir): Keep only the task-owned copy
+
+---
+
+### Step 4e: Audit Task Workspaces
+
+Each long-running task should own a directory under `sandbox/<task-name>/` with its scripts, state, and docs.
+
+```bash
+# List all sandbox directories (should each have a README.md)
+for d in sandbox/*/; do
+    [ -f "${d}README.md" ] || echo "MISSING README: $d"
+done
+
+# Check for scripts outside their task's workspace (leaked into toolbox or random dirs)
+find sandbox/toolbox/scripts/ -name "*.sh" 2>/dev/null | while read f; do
+    # If a script references a specific task, it should live in that task's dir
+    grep -l 'pi-study\|github-triage' "$f" 2>/dev/null && echo "TASK-SCRIPT IN TOOLBOX: $f"
+done
+```
+- **Missing README.md** in a task workspace: Create one via `task-workspace` skill
+- **Task scripts in toolbox**: Move them to the appropriate `sandbox/<task>/scripts/`
+- **Stale empty directories**: Remove them (e.g., `sandbox/scripts/` if it's empty)
+
+---
+
 ### Step 5: Audit Task System (`task/`)
 
 #### 5a: Active Tasks — Progress Assessment
