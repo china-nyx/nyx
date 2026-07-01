@@ -33,9 +33,6 @@ cat task/index.md | tail -30
 # Is there anything new in my inbox?
 ls -la mailbox/inbox/
 
-# How many outbox results have accumulated?
-ls mailbox/outbox/ 2>/dev/null | wc -l
-
 # What's the current time?
 date '+%Y-%m-%d %H:%M:%S'
 
