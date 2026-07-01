@@ -369,9 +369,25 @@ Ask yourself:
 - **Is the order of steps logical?** Should anything be reorganized?
 - **Are the bash commands still valid?** Do they produce useful output?
 
-#### 6b: Update SKILL.md if Needed
+#### 6b: Update This SKILL.md (Self-Improve)
 
-If you discover improvements to this skill's procedure, note them. The SKILL.md in `src/skills/self-reflect/SKILL.md` can be updated via `needs_upgrade`.
+If you discover improvements to this skill's procedure, **apply them directly** — no restart needed.
+
+**How it works:**
+1. Read the current SKILL.md at `skills/self-reflect/SKILL.md` (runtime override if it exists, otherwise built-in from source)
+2. Apply your improvements using the `edit` tool on `skills/self-reflect/SKILL.md`
+3. This writes to `$NYX_HOME/skills/self-reflect/SKILL.md` which overrides the built-in version
+4. Next self-reflect cycle automatically uses the updated version (agent.py reads SKILL.md as requirement)
+
+**What to improve:**
+- Add new audit steps for areas you discovered need checking
+- Remove redundant or low-value steps
+- Fix bash commands that produce no useful output
+- Update paths that have changed (e.g., memory moved from flat files to subdirectories)
+- Clarify ambiguous instructions
+
+**When to use needs_upgrade instead:**
+Only return `needs_upgrade` if the improvement requires changing NYX source code (Python files in `src/`). SKILL.md changes are always done directly via `edit`.
 
 ---
 
