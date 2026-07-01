@@ -53,7 +53,7 @@ class Agent:
         """If enough time has passed since last self-reflection, create a task.
 
         Requirement text is the self-reflect SKILL.md (single source of truth).
-        Runtime override: $NYX_HOME/skills/self-reflect/SKILL.md shadows built-in.
+        Runtime override: skills/self-reflect/SKILL.md (under cwd) shadows built-in.
         NYX itself can improve its own SKILL.md via Step 6b — no restart needed.
 
         Skips if there's already an active (non-done) self-reflect task waiting —

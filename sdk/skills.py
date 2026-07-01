@@ -50,7 +50,7 @@ def scan_skills() -> str:
 
     Scans two directories recursively:
       1. CODE/skills/ (built-in, from source repo)
-      2. config.SKILLS_DIR ($NYX_HOME/skills/, runtime — overrides built-in by name)
+      2. config.SKILLS_DIR (cwd/skills/, runtime — overrides built-in by name)
 
     Deduplicates by skill name, with runtime dir taking priority."""
     skill_blocks = []

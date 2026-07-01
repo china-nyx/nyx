@@ -153,8 +153,7 @@ Create `sandbox/projects/<project-name>/scripts/trigger.sh`:
 ```bash
 #!/bin/bash
 set -euo pipefail
-NYX_HOME="${NYX_HOME:-$(pwd)}"
-INBOX="$NYX_HOME/mailbox/inbox"
+INBOX="$(pwd)/mailbox/inbox"
 mkdir -p "$INBOX"
 
 TIMESTAMP=$(date '+%Y%m%d-%H%M')

@@ -77,13 +77,13 @@ def main():
     from core import config
     from core.git import Git
 
-    # Ensure cwd matches $NYX_HOME so relative paths resolve correctly
+    # Ensure cwd is the runtime root so all derived paths resolve correctly
     config.HOME.mkdir(parents=True, exist_ok=True)
     os.chdir(str(config.HOME))
 
     _create_agents_skills_bridge()
 
-    # Symlink $NYX_HOME/sandbox/src -> CODE so solver sees source under sandbox/
+    # Symlink sandbox/src -> CODE so solver sees source under sandbox/
     sl = config.SRC_LINK
     if sl.exists() or sl.is_symlink():
         sl.unlink()

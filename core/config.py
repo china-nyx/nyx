@@ -5,13 +5,8 @@ from pathlib import Path
 # CODE is auto-detected from this file's location
 CODE = Path(__file__).resolve().parent.parent
 
-_home_env = os.environ.get("NYX_HOME")
-if _home_env:
-    HOME = Path(_home_env)
-else:
-    HOME = Path.cwd().resolve()
-# Always export so child processes (smoke, checks) inherit the correct home
-os.environ["NYX_HOME"] = str(HOME)
+HOME = Path.cwd().resolve()
+# WorkingDirectory in systemd unit determines runtime root
 if HOME == CODE or str(HOME).startswith(str(CODE) + os.sep):
     raise RuntimeError(f"Runtime root ({HOME}) must not be inside the source repo ({CODE}).")
 
@@ -26,7 +21,7 @@ SKILLS_DIR = HOME / "skills"
 SANDBOX_DIR = HOME / "sandbox"
 SRC_LINK = HOME / "sandbox" / "src"  # symlink -> CODE, so solver sees source under sandbox/
 
-# ── Runtime settings ($NYX_HOME/config/settings.json) ────────────────
+# ── Runtime settings (config/settings.json) ────────────────
 _CONFIG_DIR = HOME / "config"
 _SETTINGS_FILE = _CONFIG_DIR / "settings.json"
 if not _SETTINGS_FILE.exists():

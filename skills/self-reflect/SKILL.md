@@ -374,7 +374,7 @@ Ask yourself:
 If you discover improvements to this skill's procedure, **apply them directly** — no restart needed.
 
 **How it works:**
-The writable runtime path is `skills/self-reflect/SKILL.md` (resolves to `$NYX_HOME/skills/self-reflect/SKILL.md`). The built-in at `src/skills/self-reflect/SKILL.md` is read-only.
+The writable runtime path is `skills/self-reflect/SKILL.md` (under cwd). The built-in at `src/skills/self-reflect/SKILL.md` is read-only.
 
 1. **Check if runtime override exists:**
    ```bash

@@ -16,7 +16,7 @@ crash ─▶ boot catches exception → evolver (editor → promote → restart)
 ```
 
 - **Solver** attempts the task with 4 base tools (`bash`, `read`, `write`, `edit`) and
-  skills loaded from `$NYX_HOME/skills/`. Returns structured JSON: `done` or `needs_upgrade`.
+  skills loaded from `skills/` (under cwd). Returns structured JSON: `done` or `needs_upgrade`.
 - **Editor** is the stable core — an LLM agent session in a throwaway git worktree.
   It reads requirements, studies source code, and implements changes. Only depends on core/ + sdk/.
 - **Evolver** orchestrates the editor: creates a worktree, runs the editor, promotes changes to main, restarts.
@@ -33,7 +33,7 @@ sdk/        — tools.py (4 base tools), llm.py, atomic_io, exceptions
 skills/     — built-in skills (loaded at runtime from source repo)
 ```
 
-### Runtime State (`$NYX_HOME/`)
+### Runtime State (cwd)
 
 ```
 task/       — per-task persistent state (scheduler managed)
@@ -63,7 +63,7 @@ NYX manages requirements as tasks with an OS-like scheduler:
 - **4 base tools** (`bash`, `read`, `write`, `edit`) are the only code-level capabilities.
 - **Built-in skills** live in the source repo (`skills/`) and are loaded directly from there.
   They cover generic agent behavior like self-reflection and memory management.
-- **Runtime skills** go directly in `$NYX_HOME/skills/<name>/SKILL.md`. They override
+- **Runtime skills** go directly in `skills/<name>/SKILL.md` (under cwd). They override
   built-in skills by name — if a runtime skill has the same name as a built-in one,
   the runtime version is used. This lets you customize or extend behavior without touching code.
 - The agent reads a skill's SKILL.md and executes its steps using the base tools.
@@ -78,7 +78,7 @@ improve skill steps, discover capability gaps.
 
 Self-reflection runs automatically every 3600 seconds (configurable via `NYX_SELF_REFLECT_SEC`).
 
-To customize what self-reflect audits, place your own SKILL.md at `$NYX_HOME/skills/self-reflect/SKILL.md` — it shadows the built-in version. NYX can also improve its own SKILL.md during reflection cycles without a restart.
+To customize what self-reflect audits, place your own SKILL.md at `skills/self-reflect/SKILL.md` (under cwd) — it shadows the built-in version. NYX can also improve its own SKILL.md during reflection cycles without a restart.
 
 ## Safety model
 
@@ -92,7 +92,7 @@ NYX is pure Python (standard library) managed with [uv](https://github.com/astra
 and talks to any OpenAI-compatible model server (e.g. a local `llama-server`).
 
 ```bash
-# Create $NYX_HOME/config/settings.json first:
+# Create config/settings.json in your working directory first:
 {
     "llm": {
         "base_url": "http://127.0.0.1:8001/v1",
@@ -101,7 +101,7 @@ and talks to any OpenAI-compatible model server (e.g. a local `llama-server`).
     }
 }
 
-export NYX_HOME=/path/to/nyx/workspace
+cd /path/to/nyx/workspace
 python3 /path/to/nyx/repo/core/boot.py
 ```
 
@@ -118,14 +118,14 @@ Restart=on-failure
 
 ### Sending Tasks
 
-Drop a `.md` file into `$NYX_HOME/mailbox/inbox/`. The scheduler ingests it and creates a task.
+Drop a `.md` file into `mailbox/inbox/`. The scheduler ingests it and creates a task.
 
 **Filename convention:** use `<priority>-<description>.md` (e.g. `90-urgent-fix.md`).
 The scheduler parses priority from the filename prefix — larger number = higher priority. Default is 50 if the prefix is not a valid integer.
 
 ### Configuration
 
-All runtime config is in `$NYX_HOME/config/settings.json`. Env vars override file values:
+All runtime config is in `config/settings.json`. Env vars override file values:
 
 ```json
 {

@@ -22,8 +22,8 @@ NYX follows the [Agent Skills standard](https://agentskills.io/specification.md)
 3. Scripts reference paths relative to the runtime root (cwd)
 4. Changes are promoted through the evolver FSM (commit → promote → restart)
 
-**Instance-specific skills** go directly in `$NYX_HOME/skills/<name>/SKILL.md` — no code change needed.
-Runtime skills override built-in ones by name: if `$NYX_HOME/skills/<name>/` exists, it shadows
+**Instance-specific skills** go directly in `skills/<name>/SKILL.md` (under cwd) — no code change needed.
+Runtime skills override built-in ones by name: if `skills/<name>/` exists, it shadows
 `repo/skills/<name>/`. The runtime skills directory has its own git repo for version control.
 
 ## Git Workflow

@@ -21,7 +21,7 @@ from core.log import get_logger
 logger = get_logger(__name__)
 from sdk.tools import format_tool_log
 
-# Skills: loaded from CODE/skills/ (built-in) and $NYX_HOME/skills/ (runtime)
+# Skills: loaded from CODE/skills/ (built-in) and cwd/skills/ (runtime)
 # Runtime skills override built-in ones by name.
 config.SKILLS_DIR.mkdir(parents=True, exist_ok=True)
 
