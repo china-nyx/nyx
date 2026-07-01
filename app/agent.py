@@ -49,50 +49,11 @@ class Agent:
 
     # ── Self-reflection ─────────────────────────────────────────────
 
-    _DEFAULT_SELF_REFLECT = (
-        "Priority: 10\n\n"
-        "## Self-Reflection Cycle — Full Workspace Audit\n\n"
-        "Use the self-reflect skill to conduct a comprehensive audit of **everything** under NYX's control.\n\n"
-        "### What to Audit (6 domains)\n\n"
-        "1. **Source code** (`src/`)\n"
-        "   - Check for TODO/FIXME/HACK markers, dead code, missing docstrings\n"
-        "   - Verify module imports work (smoke check)\n"
-        "   - Cross-reference recent git history with open issues — mark resolved items\n\n"
-        "2. **Documentation** (`AGENTS.md`, `README.md`)\n"
-        "   - Verify file layout sections match actual directory structure\n"
-        "   - Check for drift between docs and reality\n"
-        "   - Look for duplicated info that could be consolidated\n\n"
-        "3. **Skills** (`skills/*/SKILL.md`)\n"
-        "   - Verify each skill's steps still work with current codebase\n"
-        "   - Check for capability gaps — things NYX should do but has no skill for\n"
-        "   - Cross-reference skill file references against actual paths\n\n"
-        "4. **Sandbox contents** (`sandbox/`)\n"
-        "   - Memory files: accuracy, drift, completeness; prune if too large\n"
-        "   - Projects: check `sandbox/projects/INDEX.md`, verify each project has README.md\n"
-        "   - Cron entries: verify scripts exist, no stale paths, cron points to project dirs not toolbox\n"
-        "   - Temp files: clean up `sandbox/temp/` and `projects/*/temp/` older than 7 days\n"
-        "   - Clean up stale scripts, data, or artifacts\n\n"
-        "5. **Task system** (`task/`)\n"
-        "   - Active tasks: progress assessment — moving forward or stuck?\n"
-        "   - Task index: is it too large? Prune old entries?\n"
-        "   - Identify looping or abandoned tasks needing intervention\n\n"
-        "6. **Self-reflect itself** (meta-reflection)\n"
-        "   - Is this skill's procedure optimal? What adds value, what's redundant?\n"
-        "   - Are there new areas to audit not covered yet?\n"
-        "   - Note improvements for the SKILL.md\n\n"
-        "### Core Principle: Continuous Improvement\n\n"
-        "Every cycle should leave the workspace in a slightly better state:\n"
-        "- **Summarize**: Compress verbose entries. Prune resolved/obsolete content.\n"
-        "- **Update**: Fix drift between docs/memory and reality.\n"
-        "- **Improve**: Make skill steps clearer, scripts more robust.\n"
-        "- **Discover**: Identify capability or knowledge gaps not addressed by any task.\n\n"
-        "### After reflection\n"
-        "- Read `sandbox/memory/INDEX.md` to find memory files, then update them\n"
-        "- If code or skill changes are needed, return `needs_upgrade`\n\n"
-        "This is not about solving an external task — it's about looking inward, auditing everything, and making NYX better.")
-
     def _maybe_self_reflect(self):
         """If enough time has passed since last self-reflection, create a task.
+
+        Requirement text is read from the self-reflect SKILL.md (single source of truth).
+        User can override via $NYX_HOME/config/self-reflect.md.
 
         Skips if there's already an active (non-done) self-reflect task waiting —
         prevents duplicate accumulation when scheduler is busy."""
@@ -112,7 +73,12 @@ class Agent:
         if req_file.exists():
             requirement = req_file.read_text(encoding="utf-8")
         else:
-            requirement = self._DEFAULT_SELF_REFLECT
+            # Single source of truth: read from the self-reflect SKILL.md
+            skill_file = config.CODE / "skills" / "self-reflect" / "SKILL.md"
+            if not skill_file.exists():
+                logger.warning("[agent] self-reflect SKILL.md not found — skipping")
+                return False
+            requirement = f"Priority: 10\n\n{skill_file.read_text(encoding='utf-8')}"
         tid = scheduler.create_task(requirement, priority=10, source_file="self-reflect")
         logger.info(f"[agent] auto-created self-reflection task {tid}")
 
