@@ -89,11 +89,20 @@ class Agent:
         "This is not about solving an external task — it's about looking inward, auditing everything, and making NYX better.")
 
     def _maybe_self_reflect(self):
-        """If enough time has passed since last self-reflection, create a task."""
+        """If enough time has passed since last self-reflection, create a task.
+
+        Skips if there's already an active (non-done) self-reflect task waiting —
+        prevents duplicate accumulation when scheduler is busy."""
         from app import scheduler
         now = time.time()
         if self.SELF_REFLECT_INTERVAL <= 0 or now - self._last_self_reflect < self.SELF_REFLECT_INTERVAL:
             return False
+        # Dedup: don't create another if one is already pending/running
+        for tid, info in scheduler.scan_tasks():
+            src = scheduler._read(tid, "source_file") or ""
+            if src == "self-reflect" and info["state"] in ("new", "running"):
+                logger.info(f"[agent] skipping self-reflect — {tid} already active ({info['state']})")
+                return False
         self._last_self_reflect = now
         # Allow user to override the requirement via a config file
         req_file = config.HOME / "config" / "self-reflect.md"
