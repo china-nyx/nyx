@@ -260,7 +260,7 @@ find sandbox/toolbox/ -type f 2>/dev/null | head -20
 
 ### Step 4d: Audit Cron Entries
 
-Cron entries should point to task-owned scripts, never to missing files or toolbox copies.
+Cron entries should point to project-owned scripts under `sandbox/projects/<name>/scripts/`, never to missing files or toolbox copies.
 
 ```bash
 # List all cron entries
@@ -271,34 +271,44 @@ crontab -l 2>/dev/null | grep -oP '/sandbox/\S+' | sort -u | while read f; do
     [ -f "$f" ] || echo "BROKEN CRON: $f"
 done
 
-# Check for cron pointing to toolbox (should point to task-owned dirs)
-crontab -l 2>/dev/null | grep 'toolbox' && echo "WARNING: cron points to toolbox — should be task-owned"
+# Check for cron pointing to toolbox (should point to project-owned dirs)
+crontab -l 2>/dev/null | grep 'toolbox' && echo "WARNING: cron points to toolbox — should be sandbox/projects/<name>/scripts/"
 ```
-- **Broken cron** (script missing): Create the script via `task-workspace` skill, or remove the cron entry
-- **Cron pointing to toolbox**: Move the script to its task's workspace and update cron
-- **Duplicate scripts** (same file in toolbox AND task dir): Keep only the task-owned copy
+- **Broken cron** (script missing): Create the script via `project` skill, or remove the cron entry
+- **Cron pointing to toolbox**: Move the script to its project's workspace and update cron
+- **Duplicate scripts** (same file in toolbox AND project dir): Keep only the project-owned copy
 
 ---
 
-### Step 4e: Audit Task Workspaces
+### Step 4e: Audit Projects (`sandbox/projects/`)
 
-Each long-running task should own a directory under `sandbox/<task-name>/` with its scripts, state, and docs.
+Every long-running task should be a project under `sandbox/projects/`, registered in INDEX.md.
 
 ```bash
-# List all sandbox directories (should each have a README.md)
-for d in sandbox/*/; do
+# Check INDEX.md exists and is readable
+cat sandbox/projects/INDEX.md 2>/dev/null || echo "MISSING: sandbox/projects/INDEX.md"
+
+# List all project directories (each should have a README.md)
+for d in sandbox/projects/*/; do
     [ -f "${d}README.md" ] || echo "MISSING README: $d"
 done
 
-# Check for scripts outside their task's workspace (leaked into toolbox or random dirs)
+# Check for scripts outside projects (leaked into toolbox or random dirs)
 find sandbox/toolbox/scripts/ -name "*.sh" 2>/dev/null | while read f; do
-    # If a script references a specific task, it should live in that task's dir
-    grep -l 'pi-study\|github-triage' "$f" 2>/dev/null && echo "TASK-SCRIPT IN TOOLBOX: $f"
+    grep -l 'pi-study\|github-triage' "$f" 2>/dev/null && echo "PROJECT-SCRIPT IN TOOLBOX: $f"
+done
+
+# Check for project directories at sandbox root (should be under projects/)
+for d in sandbox/*/; do
+    name=$(basename "$d")
+    case "$name" in memory|src|task|toolbox|projects) continue ;; esac
+    echo "POSSIBLE UNFILED PROJECT: $d — should be under sandbox/projects/"
 done
 ```
-- **Missing README.md** in a task workspace: Create one via `task-workspace` skill
-- **Task scripts in toolbox**: Move them to the appropriate `sandbox/<task>/scripts/`
-- **Stale empty directories**: Remove them (e.g., `sandbox/scripts/` if it's empty)
+- **Missing INDEX.md**: Create it via `project` skill
+- **Project at sandbox root** (e.g., `sandbox/pi-study/`): Migrate to `sandbox/projects/pi-study/`
+- **Project scripts in toolbox**: Move them to the appropriate `sandbox/projects/<name>/scripts/`
+- **Missing README.md** in a project: Create one via `project` skill
 
 ---
 
