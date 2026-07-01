@@ -52,8 +52,9 @@ class Agent:
     def _maybe_self_reflect(self):
         """If enough time has passed since last self-reflection, create a task.
 
-        Requirement text is read from the self-reflect SKILL.md (single source of truth).
-        User can override via $NYX_HOME/config/self-reflect.md.
+        Requirement text is the self-reflect SKILL.md (single source of truth).
+        Runtime override: $NYX_HOME/skills/self-reflect/SKILL.md shadows built-in.
+        NYX itself can improve its own SKILL.md via Step 6b — no restart needed.
 
         Skips if there's already an active (non-done) self-reflect task waiting —
         prevents duplicate accumulation when scheduler is busy."""
@@ -68,17 +69,14 @@ class Agent:
                 logger.info(f"[agent] skipping self-reflect — {tid} already active ({info['state']})")
                 return False
         self._last_self_reflect = now
-        # Allow user to override the requirement via a config file
-        req_file = config.HOME / "config" / "self-reflect.md"
-        if req_file.exists():
-            requirement = req_file.read_text(encoding="utf-8")
-        else:
-            # Single source of truth: read from the self-reflect SKILL.md
+        # Single source of truth: runtime SKILL.md overrides built-in (standard skill override)
+        skill_file = config.SKILLS_DIR / "self-reflect" / "SKILL.md"
+        if not skill_file.exists():
             skill_file = config.CODE / "skills" / "self-reflect" / "SKILL.md"
-            if not skill_file.exists():
-                logger.warning("[agent] self-reflect SKILL.md not found — skipping")
-                return False
-            requirement = f"Priority: 10\n\n{skill_file.read_text(encoding='utf-8')}"
+        if not skill_file.exists():
+            logger.warning("[agent] self-reflect SKILL.md not found — skipping")
+            return False
+        requirement = f"Priority: 10\n\n{skill_file.read_text(encoding='utf-8')}"
         tid = scheduler.create_task(requirement, priority=10, source_file="self-reflect")
         logger.info(f"[agent] auto-created self-reflection task {tid}")
 

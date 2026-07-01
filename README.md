@@ -78,7 +78,7 @@ improve skill steps, discover capability gaps.
 
 Self-reflection runs automatically every 3600 seconds (configurable via `NYX_SELF_REFLECT_SEC`).
 
-To customize what self-reflect audits, create `$NYX_HOME/config/self-reflect.md` with your own requirement text. NYX will use it instead of the built-in default.
+To customize what self-reflect audits, place your own SKILL.md at `$NYX_HOME/skills/self-reflect/SKILL.md` — it shadows the built-in version. NYX can also improve its own SKILL.md during reflection cycles without a restart.
 
 ## Safety model
 
