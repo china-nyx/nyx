@@ -8,7 +8,8 @@ This document is for **developers** working on NYX itself. For user-facing docum
 - **Code changes via evolver FSM**: The solver returns `needs_upgrade` and the system takes over.
 - **Skills over tools**: New capabilities go in `skills/<name>/` as SKILL.md + scripts, NOT as new `_t_*` methods in `sdk/tools.py`.
 - **Skill pattern**: Each skill is a directory with `SKILL.md` (frontmatter: name, description) and optional `scripts/` subdirectory. The LLM reads the SKILL.md via `read`, then executes steps using `bash` to call scripts.
-- **All code is modifiable**: The evolver can change any file in the worktree (smoke gate + promote).
+- **All code is modifiable**: The evolver can change any file in the worktree (promote → restart).
+- **Editor is the stable core**: `app/editor.py` only depends on core/ + sdk/. Boot invokes it directly when anything fails.
 
 ## Skill Development
 
@@ -19,24 +20,22 @@ NYX follows the [Agent Skills standard](https://agentskills.io/specification.md)
 1. Create `SKILL.md` with frontmatter (name, description) and usage instructions
 2. Add helper scripts in `scripts/` subdirectory if needed
 3. Scripts reference paths relative to the runtime root (cwd)
-4. Changes are promoted through the evolver FSM (smoke check + restart)
+4. Changes are promoted through the evolver FSM (commit → promote → restart)
 
-**Instance-specific skills** go directly in `$NYX_HOME/skills/<name>/` — no code change needed.
+**Instance-specific skills** go directly in `$NYX_HOME/skills/<name>/SKILL.md` — no code change needed.
 Runtime skills override built-in ones by name: if `$NYX_HOME/skills/<name>/` exists, it shadows
 `repo/skills/<name>/`. The runtime skills directory has its own git repo for version control.
 
 ## Git Workflow
 
-- After every verified working change: `git add -A && git commit -m '<desc>' && git tag safe-boot -f`
-- The `safe-boot` tag is used by boot.py for recovery — always keep it pointing to the last known-good state
-- The `safe-boot` tag stays local only; never push it to remote
+- After every verified working change: `git add -A && git commit -m '<desc>'`
 - The evolver creates temporary detached worktrees on-demand (deleted after promote), never edits main repo directly
 
 ## Cross-references
 
 Topics covered in README.md (see there for details):
 
-- [How NYX works](README.md#how-it-works) — solver / evolver flow
+- [How NYX works](README.md#how-it-works) — solver / editor / evolver flow
 - [OS Process Model](README.md#os-process-model) — task lifecycle and scheduling
 - [Skills overview](README.md#skills) — runtime vs built-in skills
 - [Self-Reflection](README.md#self-reflection) — periodic self-audit

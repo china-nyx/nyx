@@ -2,8 +2,7 @@
 
 NYX is a self-evolving autonomous agent. You give it a goal; it tries to solve it with
 its tools, and when it hits a capability it lacks, it **rewrites its own code** to gain
-that capability — behind a safety gate that can always roll the system back to a known-good
-state. Left running, it improves itself continuously and grounded against real reference
+that capability. Left running, it improves itself continuously and grounded against real reference
 projects, without a human in the loop.
 
 ## How it works
@@ -11,27 +10,25 @@ projects, without a human in the loop.
 ```
 requirement ─▶ solver (tries with current tools + skills)
                  ├─ solved  ─▶ done
-                 └─ needs_upgrade ─▶ evolver: edit in worktree → smoke → promote → restart
+                 └─ needs_upgrade ─▶ evolver: editor edits worktree → promote → restart
 
-crash ─▶ self-heal: capture traceback → evolver fixes code → promote → restart
+crash ─▶ boot catches exception → editor fixes code → promote → restart
 ```
 
 - **Solver** attempts the task with 4 base tools (`bash`, `read`, `write`, `edit`) and
   skills loaded from `$NYX_HOME/skills/`. Returns structured JSON: `done` or `needs_upgrade`.
-- **Evolver** edits code in a throwaway git worktree, promotes only if it passes a smoke check.
-  The system controls the promote decision (FSM, not a tool call).
-- **Boot self-check + rollback**: every start verifies health;
-  if anything regressed, it hard-rolls-back to the last good version.
-- **Self-heal**: runtime crashes are caught, the full traceback is fed to the evolver as a
-  repair task. On success NYX reboots from the fixed code (max 3 consecutive attempts).
+- **Editor** is the stable core — an LLM agent session in a throwaway git worktree.
+  It reads requirements, studies source code, and implements changes. Only depends on core/ + sdk/.
+- **Evolver** orchestrates the editor: creates a worktree, runs the editor, promotes changes to main, restarts.
+- **Boot** starts the agent. If anything fails (import error, crash), boot invokes the editor directly to fix the code.
 
 ## Architecture
 
 ### Source Repository
 
 ```
-core/       — boot, gate, git, recovery, config, log
-app/        — agent, solver, evolver, scheduler
+core/       — boot, git, config, log
+app/        — agent, editor, evolver, solver, scheduler
 sdk/        — tools.py (4 base tools), llm.py, atomic_io, exceptions
 skills/     — built-in skills (loaded at runtime from source repo)
 ```
@@ -41,6 +38,7 @@ skills/     — built-in skills (loaded at runtime from source repo)
 ```
 task/       — per-task persistent state (scheduler managed)
               ├── active            active (non-done) tids, scheduler only scans these
+              ├── current_tid       tid of the task currently being executed
               ├── index.md          human-readable history (all tasks including done)
               └── <tid>/            state, priority, requirement.md, note.md, result.md
 skills/     — runtime skills (override built-in by name)
@@ -84,10 +82,9 @@ To customize what self-reflect audits, create `$NYX_HOME/config/self-reflect.md`
 
 ## Safety model
 
-- Promotion requires passing the smoke gate; the boot self-check + rollback catch regressions.
-- The evolver FSM controls all code changes — the LLM cannot bypass the safety gate.
+- The evolver FSM controls all code changes — the LLM cannot bypass the promote gate.
 - Source repo is bind-mounted read-only at boot, preventing accidental writes by the solver.
-- **Self-heal**: if NYX crashes at runtime, it catches the exception, feeds the full traceback to the evolver, and reboots from the fixed version — up to 3 consecutive attempts before giving up.
+- **Self-heal**: if NYX crashes at any point, boot catches the exception and invokes the editor to fix the code.
 
 ## Running it
 
@@ -145,9 +142,6 @@ All runtime config is in `$NYX_HOME/config/settings.json`. Env vars override fil
     "log": {
         "max_mb": 50,
         "keep_sessions": 300
-    },
-    "boot": {
-        "max_recover": 2
     }
 }
 ```
