@@ -245,15 +245,24 @@ The sandbox is NYX's workspace — it should be organized and useful.
   - Move resolved items from `issues/open.md` to `issues/resolved.md`
   - Move completed goals from `goals/active.md` to `goals/archive.md`
 
-#### 4b: Clean Up Stale Artifacts
+#### 4b: Clean Up Stale Artifacts and Temp Files
 
 ```bash
-# Find old temp files, stale scripts, or artifacts
+# Find old temp files, stale scripts, or artifacts at sandbox root
 find sandbox/ -maxdepth 1 -type f -name "*.patch" -o -name "*.tmp" -o -name "*.bak" 2>/dev/null
-find sandbox/toolbox/ -type f 2>/dev/null | head -20
+
+# Check global temp — should be empty (cleaned on restart)
+ls -la sandbox/temp/ 2>/dev/null | head -5
+[ -d sandbox/temp ] && echo "sandbox/temp exists: $(find sandbox/temp/ -type f | wc -l) files"
+
+# Check project-level temps older than 7 days
+find sandbox/projects/*/temp/ -type f -mtime +7 2>/dev/null | while read f; do
+    echo "STALE TEMP (>7d): $f"
+done
 ```
-- Identify files that are no longer needed and should be cleaned up
-- Look for useful patterns or findings that should be promoted into skills or memory
+- **`sandbox/temp/`** should be empty — global scratch cleaned on restart
+- **`projects/<name>/temp/`** files older than 7 days can be deleted
+- Files found at sandbox root (not in any directory) should be moved or deleted
 
 #### 4c: Check Sandbox Organization
 

@@ -16,6 +16,7 @@ sandbox/
 │   └── INDEX.md                ← Memory file index (identity.md, goals.md, ...)
 ├── src → CODE                  ← Source repo symlink (read-only)
 ├── task/                       ← Scheduler task state (managed by scheduler)
+├── temp/                       ← Global scratch space (auto-cleaned on restart)
 ├── projects/                   ← All long-running projects
 │   ├── INDEX.md                ← Index of all active projects
 │   └── <project-name>/         ← One directory per project
@@ -41,8 +42,9 @@ sandbox/projects/<project-name>/
 ├── progress.md             ← Progress tracking, state, next steps
 ├── scripts/                ← Cron triggers, automation scripts
 │   └── trigger.sh          ← Drops inbox task for the scheduler
-├── data/                   ← State files, caches, checkpoints
+├── data/                   ← State files, caches, checkpoints (persistent)
 ├── insights/               ← Research findings, analysis reports
+├── temp/                   ← Scratch space for this project only (cleaned periodically)
 └── archive/                ← Old sessions, completed work
 ```
 
@@ -66,6 +68,7 @@ sandbox/projects/<project-name>/
 ## Shared Resources
 | Directory | Purpose |
 |-----------|---------|
+| temp/     | Global scratch space (auto-cleaned on restart) |
 | toolbox/  | Reusable utilities (API wrappers, helper scripts) |
 | repos/    | External repo clones for study/reference |
 
@@ -219,6 +222,9 @@ When a project is no longer active:
 - **Every project has README.md** — single source of truth for what it does and how to run it
 - **Cron always points to `sandbox/projects/<name>/scripts/`**
 - **No scripts leaked into toolbox** — project-specific scripts stay in their project directory
+- **Temp files go in temp/** — intermediate data, downloads, test output. Never leave them in data/, insights/, or at sandbox root
+- **`sandbox/temp/` is global scratch space** — cleaned on each restart; nothing here survives a reboot
+- **`projects/<name>/temp/` is project-local scratch space** — cleaned by self-reflect if files are older than 7 days
 
 ## When to Use This Skill
 
