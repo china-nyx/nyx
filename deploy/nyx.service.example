@@ -1,0 +1,30 @@
+# NYX systemd unit template. Copy to /etc/systemd/system/nyx.service and fill in paths.
+# All private config lives in $NYX_HOME/config/settings.json — nothing env-specific is hard-coded.
+
+[Unit]
+Description=NYX self-evolving agent
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=YOUR_USER
+WorkingDirectory=/path/to/nyx/workspace
+ExecStart=/path/to/nyx/repo/.venv/bin/python3 /path/to/nyx/repo/core/boot.py
+
+# Crash recovery ("stay alive" parent; owner can always `systemctl stop`).
+Restart=on-failure
+RestartSec=10
+# Graceful stop: SIGTERM the agent (clean exit), SIGKILL after timeout.
+TimeoutStopSec=30
+KillMode=mixed
+# Resource ceilings so a runaway agent stays within budget.
+MemoryMax=8G
+MemoryHigh=6G
+CPUQuota=300%
+TasksMax=512
+Nice=10
+OOMScoreAdjust=500
+
+[Install]
+WantedBy=multi-user.target
