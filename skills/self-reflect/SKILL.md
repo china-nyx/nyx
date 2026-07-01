@@ -228,17 +228,22 @@ The sandbox is NYX's workspace — it should be organized and useful.
 
 #### 4a: Memory Files (accuracy, drift, completeness)
 
-- **Read all memory files** (use INDEX.md to know which ones exist): `identity.md`, `journal.md`, `goals.md`, `issues.md`
+- **Read all memory files** (use INDEX.md to know which ones exist): `identity.md`, `goals/active.md`, `issues/open.md`, `journal/current.md`
+- **Check structure**: Memory should use subdirectories (`goals/`, `issues/`, `journal/`). If still flat files, note migration needed.
+  ```bash
+  # Check if memory uses new directory structure or old flat files
+  ls sandbox/memory/goals/active.md sandbox/memory/issues/open.md sandbox/memory/journal/current.md 2>/dev/null
+  # Old flat files still present?
+  [ -f sandbox/memory/goals.md ] && echo "MIGRATE: goals.md → goals/active.md"
+  [ -f sandbox/memory/issues.md ] && echo "MIGRATE: issues.md → issues/open.md"
+  [ -f sandbox/memory/journal.md ] && echo "MIGRATE: journal.md → journal/current.md"
+  ```
 - **Update INDEX.md** after updating any memory file — keep timestamps and sizes current
 - **Check for drift**: Cross-reference claims in memory against actual source code
-  ```bash
-  cd src && git log --oneline -10
-  # Verify specific claims in issues.md against actual source
-  ```
 - **Prune and summarize**:
-  - Is `journal.md` getting too large (>50KB)? Summarize old entries, keep recent ones.
-  - Are there resolved items in `issues.md` that should be moved to "Resolved" section?
-  - Are goals in `goals.md` still relevant? Update statuses.
+  - Is `journal/current.md` getting too large (>50KB)? Summarize old entries into `journal/archive/<date>.md`
+  - Move resolved items from `issues/open.md` to `issues/resolved.md`
+  - Move completed goals from `goals/active.md` to `goals/archive.md`
 
 #### 4b: Clean Up Stale Artifacts
 
@@ -376,7 +381,7 @@ Ask yourself:
 
 After all audits, consolidate findings and update records.
 
-#### 8a: Update journal.md
+#### 8a: Update journal/current.md
 
 Append a new entry with:
 - Timestamp
@@ -384,21 +389,21 @@ Append a new entry with:
 - Decisions made and actions taken
 - Next priorities
 
-#### 8b: Update goals.md
+#### 8b: Update goals/active.md
 
 - Update goal statuses based on audit findings
 - Add new goals if gaps discovered
-- Remove/archive completed goals
+- Move completed goals to `goals/archive.md`
 
-#### 8c: Update issues.md
+#### 8c: Update issues/open.md
 
-- Move resolved issues to "Resolved" section
+- Move resolved issues to `issues/resolved.md`
 - Add new issues discovered during audit
 - Update priorities based on current context
 
 #### 8d: Prune and Summarize
 
-- If `journal.md` exceeds ~50KB, summarize oldest entries and truncate
+- If `journal/current.md` exceeds ~50KB, summarize oldest entries into `journal/archive/<date>.md`
 - Clean up stale sandbox artifacts identified in Step 4d
 - If `task/index.md` is too large, prune old completed entries
 
@@ -437,4 +442,4 @@ PRIORITY: <N>
 
 ## Output Format
 
-When done reflecting, write your findings to `sandbox/memory/journal.md` as a new entry. Return status="done" with a brief summary of what you found and decided. If code or skill changes are needed, return status="needs_upgrade".
+When done reflecting, write your findings to `sandbox/memory/journal/current.md` as a new entry. Return status="done" with a brief summary of what you found and decided. If code or skill changes are needed, return status="needs_upgrade".
