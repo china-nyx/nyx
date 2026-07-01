@@ -76,7 +76,7 @@ class Agent:
         if not skill_file.exists():
             logger.warning("[agent] self-reflect SKILL.md not found — skipping")
             return False
-        requirement = f"Priority: 10\n\n{skill_file.read_text(encoding='utf-8')}"
+        requirement = skill_file.read_text(encoding='utf-8')
         tid = scheduler.create_task(requirement, priority=10, source_file="self-reflect")
         logger.info(f"[agent] auto-created self-reflection task {tid}")
 
