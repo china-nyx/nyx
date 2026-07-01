@@ -129,17 +129,16 @@ class Agent:
         threshold = 0 if tid not in self._last_try else self.REQ_RETRY_SEC
         if now - self._last_try.get(tid, 0.0) >= threshold:
             self._last_try[tid] = now
+            scheduler.set_current(tid)
             try:
                 summary = self._execute_task(tid, info)
-                if not _running:
-                    return None
-                if summary is not None:
-                    logger.info(f"[{tid}] {summary[:200]}")
-                return summary
-            except _Shutdown:
-                raise
-            except Exception as e:
-                logger.exception(f"tick error for tid={tid}")
+            finally:
+                scheduler.clear_current()
+            if not _running:
+                return None
+            if summary is not None:
+                logger.info(f"[{tid}] {summary[:200]}")
+            return summary
         return None
 
     # ── Task execution ──────────────────────────────────────────────
@@ -211,17 +210,10 @@ class Agent:
         scheduler.set_upgrade_waiting(tid, child_tid, "solver")
 
         # Run evolver for the child task — it promotes and restarts (never returns on success)
-        try:
-            evolver.run(
-                self.llm, self._executor,
-                requirement=content, tid=child_tid,
-            )
-        except Exception as e:
-            logger.exception(f"[{tid}] upgrade failed for {child_tid}")
-            scheduler.mark_done(child_tid, f"upgrade failed: {type(e).__name__}: {e}")
-            # Restore parent to running so it can retry
-            scheduler.set_state(tid, "running")
-            return f"upgrade failed: {type(e).__name__}: {e}"
+        evolver.run(
+            self.llm, self._executor,
+            requirement=content, tid=child_tid,
+        )
         # Evolver returned normally (clean worktree, no restart needed)
         return "upgrade complete (no code changes, no restart)"
 
@@ -230,32 +222,22 @@ class Agent:
         from app import scheduler, evolver
 
         logger.info(f"[{tid}] resuming editor after upgrade")
-        try:
-            evolver.run(
-                self.llm, self._executor,
-                requirement=requirement, tid=tid,
-            )
-        except Exception as e:
-            logger.exception(f"[{tid}] editor resume failed")
-            scheduler.mark_done(tid, f"editor resume failed: {e}")
+        evolver.run(
+            self.llm, self._executor,
+            requirement=requirement, tid=tid,
+        )
 
     # ── File helpers ────────────────────────────────────────────────
 
     def _read_file(self, tid: str, name: str) -> str:
         p = config.TASK_DIR / tid / name
-        if p.exists():
-            try:
-                return p.read_text(encoding="utf-8").strip()
-            except Exception:
-                pass
-        return ""
+        if not p.exists():
+            return ""
+        return p.read_text(encoding="utf-8").strip()
 
     def _write_file(self, tid: str, name: str, content: str) -> None:
-        p = config.TASK_DIR / tid / name
-        try:
-            p.write_text(content, encoding="utf-8")
-        except Exception as e:
-            logger.exception(f"failed to write {p}")
+        (config.TASK_DIR / tid).mkdir(parents=True, exist_ok=True)
+        (config.TASK_DIR / tid / name).write_text(content, encoding="utf-8")
 
 
 # ── Main entry point ─────────────────────────────────────────────────
@@ -271,44 +253,13 @@ def run():
     logger.info(f"NYX up (pid {os.getpid()}, version {git.short()})")
 
     agent = Agent(llm=LLM())
-    _self_heal_count = 0
-    _MAX_SELF_HEAL = 3  # max consecutive self-heals before giving up
 
     while _running:
         try:
             if _running:
                 agent.tick()
-            _self_heal_count = 0  # reset on success
         except _Shutdown:
             pass
-        except Exception:
-            import traceback
-            tb = traceback.format_exc()
-            logger.exception("unhandled exception in tick")
-            _self_heal_count += 1
-            if _self_heal_count > _MAX_SELF_HEAL:
-                logger.error(f"self-heal limit reached ({_MAX_SELF_HEAL}), staying down")
-                return
-            # Spawn a self-heal upgrade task with full traceback
-            from app import scheduler, evolver
-            requirement = (
-                "## Self-Heal — Fix the following crash\n\n"
-                f"```\n{tb}\n```\n\n"
-                "Find and fix the root cause. Return needs_upgrade with the exact changes needed."
-            )
-            child_tid = scheduler.create_task(
-                requirement=requirement,
-                priority=99,
-                source_file="self-heal",
-            )
-            try:
-                evolver.run(
-                    agent.llm, agent._executor,
-                    requirement=requirement, tid=child_tid,
-                )
-            except Exception:
-                logger.exception(f"self-heal upgrade failed for {child_tid}")
-                scheduler.mark_done(child_tid, f"self-heal failed")
 
         sleep_n = 8
         for _ in range(sleep_n):

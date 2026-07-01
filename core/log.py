@@ -12,11 +12,8 @@ _root.propagate = False
 
 class _VersionFilter(logging.Filter):
     def filter(self, record):
-        try:
-            from core.git import Git
-            record._version = Git().short()[:7]
-        except Exception:
-            record._version = "unknown"
+        from core.git import Git
+        record._version = Git().short()[:7]
         return True
 
 

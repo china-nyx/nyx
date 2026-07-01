@@ -10,14 +10,10 @@ Code is read directly from the source repo (bind-mounted read-only at boot).
 """
 
 import json
-import os
 import re
 import time
 from pathlib import Path
 from typing import Dict, Optional
-import socket
-import urllib.error
-import urllib.request
 
 from core import config
 from core.log import get_logger
@@ -193,108 +189,80 @@ def solve(llm, executor, tools, requirement, skills_doc, tid=""):
     """
     _start_time = time.time()
 
-    try:
-        prior = (f"--- NYX just restarted after a code upgrade. Your changes are active. ---\nContinue from your note:\n{skills_doc}\n\n" if skills_doc else "")
-        skill_index = scan_skills()
-        skill_prefix = (skill_index + "\n\n" if skill_index else "")
-        user = (prior + skill_prefix + f"TASK:\n{requirement}")
+    prior = (f"--- NYX just restarted after a code upgrade. Your changes are active. ---\nContinue from your note:\n{skills_doc}\n\n" if skills_doc else "")
+    skill_index = scan_skills()
+    skill_prefix = (skill_index + "\n\n" if skill_index else "")
+    user = (prior + skill_prefix + f"TASK:\n{requirement}")
 
-        # Session log per task, versioned by phase + git commit hash
-        import subprocess as _sub
-        try:
-            _ver = _sub.run(["git", "-C", str(config.CODE), "rev-parse", "--short", "HEAD"],
-                            capture_output=True, text=True).stdout.strip()[:8]
-        except Exception:
-            _ver = "unknown"
-        sess_dir = config.TASK_DIR / (tid or "adhoc") / "sessions"
-        sess_dir.mkdir(parents=True, exist_ok=True)
-        sess = sess_dir / f"solver-{_ver}.jsonl"
+    # Session log per task, versioned by phase + git commit hash
+    import subprocess as _sub
+    _ver = _sub.run(["git", "-C", str(config.CODE), "rev-parse", "--short", "HEAD"],
+                    capture_output=True, text=True).stdout.strip()[:8]
+    sess_dir = config.TASK_DIR / (tid or "adhoc") / "sessions"
+    sess_dir.mkdir(parents=True, exist_ok=True)
+    sess = sess_dir / f"solver-{_ver}.jsonl"
 
-        # Prune old sessions for this task (keep last N)
-        try:
-            _old = sorted(sess_dir.glob("*.jsonl"),
-                          key=lambda p: p.stat().st_mtime, reverse=True)[config.KEEP_SESSIONS:]
-            for p in _old:
-                p.unlink(missing_ok=True)
-        except Exception:
-            pass
+    # Prune old sessions for this task (keep last N)
+    _old = sorted(sess_dir.glob("*.jsonl"),
+                  key=lambda p: p.stat().st_mtime, reverse=True)[config.KEEP_SESSIONS:]
+    for p in _old:
+        p.unlink(missing_ok=True)
 
-        def _sess(rec):
-            try:
-                rec["ts"] = int(time.time())
-                with open(sess, "a", encoding="utf-8") as f:
-                    f.write(json.dumps(rec, ensure_ascii=False) + "\n")
-            except Exception:
-                pass
+    def _sess(rec):
+        rec["ts"] = int(time.time())
+        with open(sess, "a", encoding="utf-8") as f:
+            f.write(json.dumps(rec, ensure_ascii=False) + "\n")
 
-        logger.info(f"[{tid}] solver: cwd={config.HOME}")
-        _sess({"type": "run", "tid": tid, "requirement": requirement[:500],
-               "model": getattr(llm, "model", ""), "cwd": str(config.HOME)})
-        _step_num = 0
+    logger.info(f"[{tid}] solver: cwd={config.HOME}")
+    _sess({"type": "run", "tid": tid, "requirement": requirement[:500],
+           "model": getattr(llm, "model", ""), "cwd": str(config.HOME)})
+    _step_num = 0
+    _last_step_time = time.time()
+
+    def _on_step(name, args, res_, err):
+        nonlocal _step_num, _last_step_time
+        _step_num += 1
+        duration = round(time.time() - _last_step_time, 1)
         _last_step_time = time.time()
+        logger.info(format_tool_log("solver", tid, _step_num, name, args, res_, err, duration))
+        _sess({"type": "tool", "tool": name, "step": _step_num,
+               "duration": duration,
+               "args": args or {},
+               "ok": (not err), "result": str(res_),
+               "result_brief": _result_brief(res_, err)})
 
-        def _on_step(name, args, res_, err):
-            nonlocal _step_num, _last_step_time
-            _step_num += 1
-            duration = round(time.time() - _last_step_time, 1)
-            _last_step_time = time.time()
-            logger.info(format_tool_log("solver", tid, _step_num, name, args, res_, err, duration))
-            _sess({"type": "tool", "tool": name, "step": _step_num,
-                   "duration": duration,
-                   "args": args or {},
-                   "ok": (not err), "result": str(res_),
-                   "result_brief": _result_brief(res_, err)})
+    system_prompt = _build_system_prompt(config.HOME, config.SRC_LINK, config.SANDBOX_DIR)
+    res = llm.run_agent(
+        [{"role": "system", "content": system_prompt},
+         {"role": "user", "content": user}],
+        tool_executor=executor, tools=tools,
+        temperature=0.7,
+        on_step=_on_step,
+    )
 
-        system_prompt = _build_system_prompt(config.HOME, config.SRC_LINK, config.SANDBOX_DIR)
-        res = llm.run_agent(
-            [{"role": "system", "content": system_prompt},
-             {"role": "user", "content": user}],
-            tool_executor=executor, tools=tools,
-            temperature=0.7,
-            on_step=_on_step,
-        )
+    out = res["content"] or ""
+    _sess({"type": "output", "text": out})
+    calls_list = res.get("calls", [])
 
-        if not isinstance(res, dict):
-            logger.error(f"Unexpected response type from llm.run_agent: {type(res)}")
-            return {"result": None, "raw": "Error: Unexpected response format",
-                    "calls": [], "status": "done"}
+    if not out.strip():
+        raise RuntimeError("Empty response from llm.run_agent")
 
-        out = res.get("content") or ""
-        _sess({"type": "output", "text": out})
-        calls_list = res.get("calls", [])
-
-        if not out.strip():
-            logger.warning("Empty response from llm.run_agent")
-            return {"result": None, "raw": "Error: Empty response from LLM",
-                    "calls": calls_list, "status": "done"}
-
-        parsed = _parse_solver_response(out)
-        if parsed is None:
-            # Fallback: treat raw text as done content
-            num_calls = len(calls_list)
-            elapsed = time.time() - _start_time
-            footer = f"\n[solved with {num_calls} tool calls in {elapsed:.1f} seconds]"
-            return {"result": out.strip() + footer, "raw": out,
-                    "content": out.strip(), "calls": calls_list, "status": "done"}
-
+    parsed = _parse_solver_response(out)
+    if parsed is None:
+        # Fallback: treat raw text as done content
         num_calls = len(calls_list)
         elapsed = time.time() - _start_time
         footer = f"\n[solved with {num_calls} tool calls in {elapsed:.1f} seconds]"
-        return {
-            "result": parsed["content"] + footer,
-            "raw": out,
-            "content": parsed["content"],
-            "calls": calls_list,
-            "status": parsed["status"],
-        }
+        return {"result": out.strip() + footer, "raw": out,
+                "content": out.strip(), "calls": calls_list, "status": "done"}
 
-    except (socket.timeout, urllib.error.URLError, urllib.error.HTTPError) as e:
-        logger.exception("Network error in solver.solve")
-        return {"result": None, "raw": f"Error: Network - {e}",
-                "calls": [], "status": "done"}
-    except Exception as e:
-        if type(e).__name__ == "_Shutdown":
-            raise
-        logger.exception("Error in solver.solve")
-        return {"result": None, "raw": f"Error: {e}",
-                "calls": [], "status": "done"}
+    num_calls = len(calls_list)
+    elapsed = time.time() - _start_time
+    footer = f"\n[solved with {num_calls} tool calls in {elapsed:.1f} seconds]"
+    return {
+        "result": parsed["content"] + footer,
+        "raw": out,
+        "content": parsed["content"],
+        "calls": calls_list,
+        "status": parsed["status"],
+    }

@@ -53,59 +53,48 @@ def scan_skills() -> str:
       2. config.SKILLS_DIR ($NYX_HOME/skills/, runtime — overrides built-in by name)
 
     Deduplicates by skill name, with runtime dir taking priority."""
-    try:
-        skill_blocks = []
-        seen_names = set()
+    skill_blocks = []
+    seen_names = set()
 
-        builtin_dir = config.CODE / "skills"
-        runtime_dir = config.SKILLS_DIR
+    builtin_dir = config.CODE / "skills"
+    runtime_dir = config.SKILLS_DIR
 
-        # Scan built-in first, then runtime (runtime overwrites same-name entries)
-        for skills_dir in [builtin_dir, runtime_dir]:
-            if not skills_dir.exists():
+    # Scan built-in first, then runtime (runtime overwrites same-name entries)
+    for skills_dir in [builtin_dir, runtime_dir]:
+        if not skills_dir.exists():
+            continue
+        for skill_dir in _find_skill_dirs(skills_dir):
+            skill_name = skill_dir.name
+            skill_file = skill_dir / "SKILL.md"
+
+            text = skill_file.read_text(encoding="utf-8", errors="ignore")
+            fm = _parse_frontmatter(text)
+            desc = fm.get("description", "")
+            license_val = fm.get("license", "")
+            compatibility_val = fm.get("compatibility", "")
+            allowed_tools_val = fm.get("allowed-tools", "")
+            disable_model = fm.get("disable-model-invocation", "").lower() == "true"
+
+            # Per spec: skills without a description are not loaded
+            if not desc:
                 continue
-            for skill_dir in _find_skill_dirs(skills_dir):
-                skill_name = skill_dir.name
-                skill_file = skill_dir / "SKILL.md"
 
-                desc = ""
-                license_val = ""
-                compatibility_val = ""
-                allowed_tools_val = ""
-                disable_model = False
+            # Name collision: runtime wins (processed last)
+            if skill_name in seen_names:
+                continue
+            seen_names.add(skill_name)
 
-                try:
-                    text = skill_file.read_text(encoding="utf-8", errors="ignore")
-                    fm = _parse_frontmatter(text)
-                    desc = fm.get("description", "")
-                    license_val = fm.get("license", "")
-                    compatibility_val = fm.get("compatibility", "")
-                    allowed_tools_val = fm.get("allowed-tools", "")
-                    disable_model = fm.get("disable-model-invocation", "").lower() == "true"
-                except Exception:
-                    pass
+            attrs = f'name="{skill_name}"'
+            if license_val:
+                attrs += f' license="{license_val}"'
+            if compatibility_val:
+                attrs += f' compatibility="{compatibility_val}"'
+            if allowed_tools_val:
+                attrs += f' allowed-tools="{allowed_tools_val}"'
 
-                # Per spec: skills without a description are not loaded
-                if not desc:
-                    continue
+            block = f'<skill {attrs}>\n{desc}\nRead: {skill_file}\n</skill>'
+            if not disable_model:
+                skill_blocks.append(block)
 
-                # Name collision: runtime wins (processed last)
-                if skill_name in seen_names:
-                    continue
-                seen_names.add(skill_name)
+    return ("<skills>\n" + "\n".join(skill_blocks) + "\n</skills>") if skill_blocks else ""
 
-                attrs = f'name="{skill_name}"'
-                if license_val:
-                    attrs += f' license="{license_val}"'
-                if compatibility_val:
-                    attrs += f' compatibility="{compatibility_val}"'
-                if allowed_tools_val:
-                    attrs += f' allowed-tools="{allowed_tools_val}"'
-
-                block = f'<skill {attrs}>\n{desc}\nRead: {skill_file}\n</skill>'
-                if not disable_model:
-                    skill_blocks.append(block)
-
-        return ("<skills>\n" + "\n".join(skill_blocks) + "\n</skills>") if skill_blocks else ""
-    except Exception:
-        return ""

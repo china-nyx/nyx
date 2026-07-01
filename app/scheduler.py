@@ -38,7 +38,8 @@ logger = get_logger(__name__)
 # When a task transitions to done it is removed from this list.
 # Done task directories remain on disk (for reference) but are invisible to scheduling.
 
-_ACTIVE_FILE = "active"  # task/active — one tid per line
+_ACTIVE_FILE = "active"        # task/active — one tid per line
+_CURRENT_FILE = "current_tid"   # task/current_tid — tid of the task currently being executed
 
 
 def _active_tids() -> List[str]:
@@ -49,11 +50,8 @@ def _active_tids() -> List[str]:
         # Only non-done tasks are added to active.
         _migrate_to_active()
         return []
-    try:
-        return [l.strip() for l in p.read_text(encoding="utf-8").splitlines()
-                if l.strip()]
-    except Exception:
-        return []
+    return [l.strip() for l in p.read_text(encoding="utf-8").splitlines()
+            if l.strip()]
 
 
 def _migrate_to_active() -> None:
@@ -66,10 +64,7 @@ def _migrate_to_active() -> None:
             continue
         state_file = d / "state"
         if state_file.exists():
-            try:
-                state = state_file.read_text(encoding="utf-8").strip()
-            except Exception:
-                state = "unknown"
+            state = state_file.read_text(encoding="utf-8").strip()
             if state != "done":
                 tids.append(d.name)
     if tids:
@@ -94,6 +89,30 @@ def _remove_active(tid: str) -> None:
                                                 encoding="utf-8")
 
 
+# ── Current task tracking ─────────────────────────────────────────────
+# Persists the tid of the task currently being executed.
+# Used by self-heal to recover context after a crash.
+
+def set_current(tid: str) -> None:
+    """Record that tid is the task currently being executed."""
+    (config.TASK_DIR / _CURRENT_FILE).write_text(tid, encoding="utf-8")
+
+
+def clear_current() -> None:
+    """Clear the current task marker."""
+    p = config.TASK_DIR / _CURRENT_FILE
+    if p.exists():
+        p.unlink(missing_ok=True)
+
+
+def current_tid() -> Optional[str]:
+    """Return the tid of the task currently being executed, or None."""
+    p = config.TASK_DIR / _CURRENT_FILE
+    if not p.exists():
+        return None
+    return p.read_text(encoding="utf-8").strip()
+
+
 # ── Task file helpers ────────────────────────────────────────────────
 
 def _tid_file(tid: str, name: str) -> Path:
@@ -103,20 +122,15 @@ def _tid_file(tid: str, name: str) -> Path:
 
 def _read(tid: str, name: str) -> Optional[str]:
     p = _tid_file(tid, name)
-    if p.exists():
-        try:
-            return p.read_text(encoding="utf-8").strip()
-        except Exception:
-            return None
-    return None
+    if not p.exists():
+        return None
+    return p.read_text(encoding="utf-8").strip()
 
 
 def _write(tid: str, name: str, content: str) -> None:
     p = _tid_file(tid, name)
-    try:
-        p.write_text(content, encoding="utf-8")
-    except Exception as e:
-        logger.exception(f"failed to write {p}")
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(content, encoding="utf-8")
 
 
 def _exists(tid: str) -> bool:
@@ -255,10 +269,7 @@ def ingest_inbox() -> List[str]:
     if not config.INBOX_DIR.exists():
         return created
     for f in sorted(config.INBOX_DIR.glob("*.md")):
-        try:
-            content = f.read_text(encoding="utf-8").strip()
-        except Exception:
-            continue
+        content = f.read_text(encoding="utf-8").strip()
         if not content:
             f.unlink(missing_ok=True)
             continue
@@ -283,29 +294,26 @@ def ingest_inbox() -> List[str]:
 def _update_index() -> None:
     """Write task/index.md for human reference."""
     index_path = config.TASK_DIR / "index.md"
-    try:
-        lines = ["# NYX Task Index\n", "| TID | Priority | State | Source | Summary | Created |\n"]
-        lines.append("|-----|----------|-------|--------|---------|----------|\n")
+    lines = ["# NYX Task Index\n", "| TID | Priority | State | Source | Summary | Created |\n"]
+    lines.append("|-----|----------|-------|--------|---------|----------|\n")
 
-        if config.TASK_DIR.exists():
-            for d in sorted(config.TASK_DIR.iterdir()):
-                if not d.is_dir() or d.name == "__pycache__":
-                    continue
-                tid = d.name
-                state = get_state(tid) or "?"
-                priority = _read(tid, "priority") or "?"
-                source = _read(tid, "source_file") or "-"
-                created = time.strftime("%Y-%m-%d %H:%M", time.localtime(d.stat().st_ctime))
+    if config.TASK_DIR.exists():
+        for d in sorted(config.TASK_DIR.iterdir()):
+            if not d.is_dir() or d.name == "__pycache__":
+                continue
+            tid = d.name
+            state = get_state(tid) or "?"
+            priority = _read(tid, "priority") or "?"
+            source = _read(tid, "source_file") or "-"
+            created = time.strftime("%Y-%m-%d %H:%M", time.localtime(d.stat().st_ctime))
 
-                # Summary from requirement (first line)
-                req = _read(tid, "requirement.md") or ""
-                summary = req.splitlines()[0][:50] if req else ""
-                result = _read(tid, "result.md") or ""
-                if state == "done" and result:
-                    summary = result.splitlines()[0][:50]
+            # Summary from requirement (first line)
+            req = _read(tid, "requirement.md") or ""
+            summary = req.splitlines()[0][:50] if req else ""
+            result = _read(tid, "result.md") or ""
+            if state == "done" and result:
+                summary = result.splitlines()[0][:50]
 
-                lines.append(f"| {tid} | {priority} | {state} | {source} | {summary} | {created} |\n")
+            lines.append(f"| {tid} | {priority} | {state} | {source} | {summary} | {created} |\n")
 
-        index_path.write_text("".join(lines), encoding="utf-8")
-    except Exception as e:
-        logger.exception("failed to update index")
+    index_path.write_text("".join(lines), encoding="utf-8")

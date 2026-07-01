@@ -305,11 +305,8 @@ for "finish after this single action" scenarios —
         # Context compaction below keeps history manageable for long runs.
         while True:
             # Token-aware max_tokens clamping to prevent silent truncation
-            try:
-                _context_tokens = estimate_context_tokens(msgs)
-                _clamped_max = clamp_max_tokens(4096, _context_tokens)
-            except Exception:
-                _clamped_max = 4096
+            _context_tokens = estimate_context_tokens(msgs)
+            _clamped_max = clamp_max_tokens(4096, _context_tokens)
 
             body = {"model": self.model, "messages": msgs, "tools": tools,
                     "temperature": temperature, "max_tokens": _clamped_max, "stream": False}
@@ -384,10 +381,7 @@ for "finish after this single action" scenarios —
                     return {"content": str(res)[:300], "calls": calls, "results": results}
 
             # ── Context compaction: token-aware — summarise older tool exchanges when approaching context limit ──
-            try:
-                _context_tokens = estimate_context_tokens(msgs)
-            except Exception:
-                _context_tokens = 0
+            _context_tokens = estimate_context_tokens(msgs)
 
             # Token-aware trigger with backward-compatible fallback to message count
             _should_compact = (
@@ -397,21 +391,17 @@ for "finish after this single action" scenarios —
             if _should_compact:
                 extra = len(msgs) - _initial_len
                 # Token-aware cut point: walk backwards from end, accumulate tokens, stop when >= _KEEP_RECENT_TOKENS
-                try:
-                    _cut_idx = _initial_len  # default: compact everything after initial messages
-                    accumulated = 0
-                    for i in range(len(msgs) - 1, _initial_len - 1, -1):
-                        msg_tokens = estimate_tokens(msgs[i].get("content", "") or "")
-                        for tc2 in msgs[i].get("tool_calls") or []:
-                            fn2 = tc2.get("function", {})
-                            msg_tokens += estimate_tokens(fn2.get("arguments", "") or "")
-                        accumulated += msg_tokens
-                        if accumulated >= _KEEP_RECENT_TOKENS:
-                            _cut_idx = i
-                            break
-                except Exception:
-                    # Fallback to message-count-based cut point (backward compatibility)
-                    _cut_idx = _initial_len + max(0, extra - _KEEP_RECENT)
+                _cut_idx = _initial_len  # default: compact everything after initial messages
+                accumulated = 0
+                for i in range(len(msgs) - 1, _initial_len - 1, -1):
+                    msg_tokens = estimate_tokens(msgs[i].get("content", "") or "")
+                    for tc2 in msgs[i].get("tool_calls") or []:
+                        fn2 = tc2.get("function", {})
+                        msg_tokens += estimate_tokens(fn2.get("arguments", "") or "")
+                    accumulated += msg_tokens
+                    if accumulated >= _KEEP_RECENT_TOKENS:
+                        _cut_idx = i
+                        break
 
                 compactable = msgs[_initial_len:_cut_idx]
                 if not compactable:

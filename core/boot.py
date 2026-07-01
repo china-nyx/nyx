@@ -1,10 +1,7 @@
 #!/usr/bin/env python3
-"""NYX bootstrap — runs once at startup, then hands off to the agent main loop.
+"""NYX bootstrap — setup environment, mount source read-only, start agent.
 
-Its sole responsibility:
-  self-check -> if healthy, mark HEAD as safe-boot and start agent;
-            if unhealthy, hard-roll-back to the last safe-boot and re-exec itself (with a retry cap).
-Even if code changes break the system, the next startup is caught by the self-check and auto-recovers.
+If agent fails to start, evolver is invoked directly to fix the code.
 """
 import atexit
 import os
@@ -57,19 +54,36 @@ def _mount_source_ro():
     logger.info(f"source repo mounted read-only: {ROOT}")
 
 
+def _boot_self_heal(tb, config):
+    """Boot-time crash: start editor directly to fix the code."""
+    from sdk.llm import LLM
+    from sdk.tools import Tools
+    from app import evolver
+
+    requirement = (
+        "## Self-Heal — Fix the following boot-time crash\n\n"
+        f"### Traceback\n```\n{tb}\n```\n\n"
+        "Find and fix the root cause so NYX can start cleanly."
+    )
+    llm = LLM()
+    tools = Tools(cwd=config.HOME)
+    try:
+        evolver.run(llm, tools.execute, requirement=requirement)
+    except Exception:
+        logger.exception("boot self-heal failed — cannot recover")
+
+
 def main():
     from core import config
     from core.git import Git
-    from core import gate, recovery
 
-    # Ensure cwd matches $NYX_HOME so relative paths (sandbox/, mailbox/) resolve correctly
+    # Ensure cwd matches $NYX_HOME so relative paths resolve correctly
     config.HOME.mkdir(parents=True, exist_ok=True)
     os.chdir(str(config.HOME))
 
     _create_agents_skills_bridge()
 
     # Symlink $NYX_HOME/sandbox/src -> CODE so solver sees source under sandbox/
-    from core import config
     sl = config.SRC_LINK
     if sl.exists() or sl.is_symlink():
         sl.unlink()
@@ -77,33 +91,18 @@ def main():
 
     g = Git()
     g.ensure_repo()
-    g.cleanup_stale()   # portable self-cleanup at boot: leftover candidate worktrees + uncommitted source edits from a killed generation (replaces external stop hooks)
-    if not g.has_ref(config.SAFE_BOOT_TAG):
-        recovery.mark_good()  # First time: set the current HEAD as the safe anchor
-
-    ok, detail = gate.run_selfcheck()
-    tries = int(os.environ.get("NYX_BOOT_TRY", "0"))
-
-    if ok:
-        os.environ.pop("NYX_BOOT_TRY", None)
-        recovery.mark_good()  # Current generation healthy -> advance the safe recovery point
-        _mount_source_ro()   # lock down source repo for solver
-        import importlib
-        mod_name, fn_name = config.ENTRY.split(":")
-        logger.info(f"{detail}; version {g.short()} -> {config.ENTRY}")
+    g.cleanup_stale()
+    _mount_source_ro()
+    import importlib
+    mod_name, fn_name = config.ENTRY.split(":")
+    logger.info(f"version {g.short()} -> {config.ENTRY}")
+    try:
         getattr(importlib.import_module(mod_name), fn_name)()
-        return
-
-    logger.error(f"UNHEALTHY: {detail}")
-    if tries >= config.BOOT_MAX_RECOVER:
-        logger.error("recover limit reached; staying down to avoid loop.")
-        return
-    if recovery.recover():
-        os.environ["NYX_BOOT_TRY"] = str(tries + 1)
-        logger.info(f"auto-recovered to {config.SAFE_BOOT_TAG}; re-exec.")
-        os.execv(sys.executable, [sys.executable, str(ROOT / "core" / "boot.py")])
-    else:
-        logger.error("no safe-boot anchor; staying down.")
+    except Exception:
+        import traceback
+        tb = traceback.format_exc()
+        logger.exception("agent start failed — sending to evolver for self-heal")
+        _boot_self_heal(tb, config)
 
 
 if __name__ == "__main__":

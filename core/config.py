@@ -57,10 +57,8 @@ SANDBOX_MEM_MB = int(os.environ.get("NYX_SANDBOX_MEM_MB") or _settings.get("sand
 LOG_MAX_MB = int(os.environ.get("NYX_LOG_MAX_MB") or _settings.get("log", {}).get("max_mb", 50))
 KEEP_SESSIONS = int(os.environ.get("NYX_KEEP_SESSIONS") or _settings.get("log", {}).get("keep_sessions", 300))
 
-# Git / recovery
-SAFE_BOOT_TAG = "safe-boot"
+# Git / entry
 ENTRY = os.environ.get("NYX_ENTRY", "app.agent:run")
-BOOT_MAX_RECOVER = int(_settings.get("boot", {}).get("max_recover", 2))
 
 # Ensure directories exist
 for _d in [HOME, WORKTREES, INBOX_DIR, TASK_DIR, LOG_DIR]:
