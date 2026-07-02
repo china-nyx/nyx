@@ -6,6 +6,7 @@ is handled inline via sdk.compaction.
 """
 import hashlib
 import json
+import time
 from collections import deque
 from typing import Callable, Dict, List, Optional, Set
 
@@ -45,6 +46,25 @@ class ChatClient:
     """
     model: str
     _post: Callable[[Dict], Dict]
+
+
+def _assistant_message(content: str, *, stop_reason: str = "stop",
+                       error_message: str = None) -> Dict:
+    """Create an AssistantMessage dict (compatible with pi-ai shape).
+
+    Fields: role, content, stopReason, usage, timestamp.
+    error_message is set only when stop_reason is 'error'.
+    """
+    msg = {
+        "role": "assistant",
+        "content": content,
+        "stopReason": stop_reason,
+        "usage": {"input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0, "totalTokens": 0},
+        "timestamp": int(time.time() * 1000),
+    }
+    if error_message:
+        msg["errorMessage"] = error_message
+    return msg
 
 
 def run_agent(client: ChatClient, messages: List[Dict],
@@ -93,8 +113,17 @@ def run_agent(client: ChatClient, messages: List[Dict],
         m = resp["choices"][0]["message"]
         tcs = m.get("tool_calls") or []
         if not tcs:
-            m["content"] = _strip_think(m.get("content") or "")
-            return m
+            content = _strip_think(m.get("content") or "")
+            stop_reason = resp["choices"][0].get("finish_reason", "stop")
+            usage = resp.get("usage", {})
+            msg = {
+                "role": "assistant",
+                "content": content,
+                "stopReason": stop_reason,
+                "usage": {k: usage.get(k, 0) for k in ("input","output","cacheRead","cacheWrite","totalTokens")},
+                "timestamp": int(time.time() * 1000),
+            }
+            return msg
         msgs.append(m)
 
         for tc in tcs:
@@ -152,7 +181,7 @@ def run_agent(client: ChatClient, messages: List[Dict],
             msgs.append({"role": "tool", "tool_call_id": tc.get("id", ""),
                          "content": tool_content})
             if name in terminal and not err:
-                return {"role": "assistant", "content": str(res)[:300]}
+                return _assistant_message(str(res)[:300])
 
         # ── Context compaction ────────────────────────────────────────
         if should_compact(estimate_context_tokens(msgs), len(msgs)):
@@ -179,4 +208,4 @@ def run_agent(client: ChatClient, messages: List[Dict],
                 )}
                 msgs = msgs[:_initial_len] + [summary_msg] + msgs[_cut_idx:]
 
-    return {"role": "assistant", "content": ""}
+    return _assistant_message("", stop_reason="error", error_message="no response")
