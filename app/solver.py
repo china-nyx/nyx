@@ -21,7 +21,7 @@ from core.log import get_logger
 logger = get_logger(__name__)
 from sdk.tools import format_tool_log
 
-# Skills: loaded from CODE/skills/ (built-in) and cwd/skills/ (runtime)
+# Skills: loaded from REPO/skills/ (built-in) and cwd/skills/ (runtime)
 # Runtime skills override built-in ones by name.
 config.SKILLS_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -196,7 +196,7 @@ def solve(llm, executor, tools, requirement, skills_doc, tid=""):
 
     # Session log per task, versioned by phase + git commit hash
     import subprocess as _sub
-    _ver = _sub.run(["git", "-C", str(config.CODE), "rev-parse", "--short", "HEAD"],
+    _ver = _sub.run(["git", "-C", str(config.REPO), "rev-parse", "--short", "HEAD"],
                     capture_output=True, text=True).stdout.strip()[:8]
     sess_dir = config.TASK_DIR / (tid or "adhoc") / "sessions"
     sess_dir.mkdir(parents=True, exist_ok=True)

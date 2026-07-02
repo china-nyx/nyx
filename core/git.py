@@ -11,7 +11,7 @@ logger = get_logger(__name__)
 
 class Git:
     def __init__(self, repo: str = None):
-        self.repo = str(repo or config.CODE)
+        self.repo = str(repo or config.REPO)
 
     def _run(self, *args, cwd=None) -> subprocess.CompletedProcess:
         return subprocess.run(["git", "-C", str(cwd or self.repo), *args],

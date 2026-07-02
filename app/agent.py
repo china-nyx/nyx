@@ -72,7 +72,7 @@ class Agent:
         # Single source of truth: runtime SKILL.md overrides built-in (standard skill override)
         skill_file = config.SKILLS_DIR / "self-reflect" / "SKILL.md"
         if not skill_file.exists():
-            skill_file = config.CODE / "skills" / "self-reflect" / "SKILL.md"
+            skill_file = config.REPO / "skills" / "self-reflect" / "SKILL.md"
         if not skill_file.exists():
             logger.warning("[agent] self-reflect SKILL.md not found — skipping")
             return False

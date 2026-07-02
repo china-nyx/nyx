@@ -49,14 +49,14 @@ def scan_skills() -> str:
     """Scan skills directories for SKILL.md files. Returns XML block or empty string.
 
     Scans two directories recursively:
-      1. CODE/skills/ (built-in, from source repo)
+      1. REPO/skills/ (built-in, from source repo)
       2. config.SKILLS_DIR (cwd/skills/, runtime — overrides built-in by name)
 
     Deduplicates by skill name, with runtime dir taking priority."""
     skill_blocks = []
     seen_names = set()
 
-    builtin_dir = config.CODE / "skills"
+    builtin_dir = config.REPO / "skills"
     runtime_dir = config.SKILLS_DIR
 
     # Scan built-in first, then runtime (runtime overwrites same-name entries)

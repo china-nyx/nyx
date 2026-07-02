@@ -38,7 +38,7 @@ def run(llm, executor, requirement: str, worktree: str, tid: str = "") -> str:
         f"Analyze what needs to change, implement it, and describe what you did.")
 
     _ver = subprocess.run(
-        ["git", "-C", str(config.CODE), "rev-parse", "--short", "HEAD"],
+        ["git", "-C", str(config.REPO), "rev-parse", "--short", "HEAD"],
         capture_output=True, text=True).stdout.strip()[:8]
     sess_dir = config.TASK_DIR / (tid or "adhoc") / "sessions"
     sess_dir.mkdir(parents=True, exist_ok=True)

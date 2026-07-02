@@ -24,7 +24,7 @@ def _create_worktree() -> str:
     ts = int(time.time())
     wt = config.WORKTREES / f"upgrade-{ts}"
     config.WORKTREES.mkdir(parents=True, exist_ok=True)
-    code = config.CODE
+    code = config.REPO
     subprocess.call(["umount", "-l", str(code)], stderr=subprocess.DEVNULL)
     git = Git(str(code))
     ref = git.short_branch() or "HEAD"
@@ -35,7 +35,7 @@ def _create_worktree() -> str:
 
 
 def _remove_worktree(wt_path: str) -> None:
-    Git(str(config.CODE)).remove_worktree(wt_path)
+    Git(str(config.REPO)).remove_worktree(wt_path)
     if Path(wt_path).exists():
         shutil.rmtree(wt_path, ignore_errors=True)
 
@@ -44,7 +44,7 @@ def _remove_worktree(wt_path: str) -> None:
 
 def _promote(message: str, wt_path: str, tid: Optional[str] = None) -> None:
     """Commit worktree → update main → re-exec. Never returns on success."""
-    code = config.CODE
+    code = config.REPO
     home = config.HOME
     git = Git(str(code))
 

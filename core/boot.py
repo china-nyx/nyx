@@ -83,7 +83,7 @@ def main():
 
     _create_agents_skills_bridge()
 
-    # Symlink sandbox/src -> CODE so solver sees source under sandbox/
+    # Symlink sandbox/src -> REPO so solver sees source under sandbox/
     sl = config.SRC_LINK
     if sl.exists() or sl.is_symlink():
         sl.unlink()
