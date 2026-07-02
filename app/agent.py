@@ -239,8 +239,11 @@ def run():
 
         sleep_n = 8
         for _ in range(sleep_n):
-            if not _running:
-                break
-            time.sleep(1)
+            try:
+                if not _running:
+                    break
+                time.sleep(1)
+            except _Shutdown:
+                pass
 
     logger.info("NYX stopped.")
