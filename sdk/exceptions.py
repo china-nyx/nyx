@@ -48,5 +48,5 @@ class TimeoutError(NYXException):
 
 
 class UpgradeFailed(NYXException):
-    """Raised when an upgrade pipeline step fails (editor, smoke check, promote)."""
+    """Raised when a code evolution step fails."""
     pass
