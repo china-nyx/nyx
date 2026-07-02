@@ -185,6 +185,24 @@ def mark_done(tid: str, result: str = "") -> None:
     _update_index()
 
 
+def prepare_task(tid: str) -> Optional[Tuple[str, str]]:
+    """Prepare a task for execution. Returns (requirement, note) or None.
+
+    - new → running: returns (requirement, "")
+    - running: returns (requirement, note)
+    - other: returns None
+    """
+    state = get_state(tid)
+    if state not in ("new", "running"):
+        return None
+    requirement = _read(tid, "requirement.md") or ""
+    note = _read(tid, "note.md") or ""
+    if state == "new":
+        set_state(tid, "running")
+        return requirement, ""
+    return requirement, note
+
+
 # ── Scheduler ────────────────────────────────────────────────────────
 
 def scan_tasks() -> List[Tuple[str, Dict]]:

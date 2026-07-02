@@ -104,7 +104,7 @@ class Agent:
             self._last_try[tid] = now
             scheduler.set_current(tid)
             try:
-                summary = self._execute_task(tid, info)
+                summary = self._execute_task(tid)
             finally:
                 scheduler.clear_current()
             if not _running:
@@ -114,29 +114,15 @@ class Agent:
             return summary
         return None
 
-    # ── Task execution ──────────────────────────────────────────────
-
-    def _execute_task(self, tid: str, info: dict) -> str:
+    def _execute_task(self, tid: str) -> str:
         """Execute a task via evolver.evolve(solver.solve)."""
         from app import scheduler
 
-        state = info["state"]
-        requirement = scheduler._read(tid, "requirement.md") or ""
-        note = scheduler._read(tid, "note.md") or ""
+        prepared = scheduler.prepare_task(tid)
+        if prepared is None:
+            return f"unknown state {scheduler.get_state(tid)}"
 
-        if state == "new":
-            scheduler.set_state(tid, "running")
-            return self._run_task(tid, requirement, "")
-
-        elif state == "running":
-            return self._run_task(tid, requirement, note)
-
-        return f"unknown state {state}"
-
-    def _run_task(self, tid: str, requirement: str, note: str) -> str:
-        """Run a task via evolver.evolve. If repo changes, auto-commit + restart."""
-        from app import scheduler
-
+        requirement, note = prepared
         result = evolver.evolve(
             lambda: solver.solve(self.llm, self._executor, ALL_TOOLS, requirement, note, tid=tid),
             tid=tid)
@@ -144,7 +130,7 @@ class Agent:
         if not result:
             return "no result yet; will retry"
 
-        # No code change — mark done here (evolver only marks done when restarting)
+        # No code change — mark done here (evolver marks done when restarting)
         scheduler.mark_done(tid, result)
         return "solved"
 
