@@ -49,11 +49,10 @@ class Agent:
     # ── Self-reflection ─────────────────────────────────────────────
 
     def _maybe_self_reflect(self):
-        """If enough time has passed since last self-reflection, create a task.
+        """If enough time has passed since last self-reflection, drop an inbox file.
 
-        Internal task — bypasses inbox. Uses scheduler.create_task() directly.
-        Requirement text is the self-reflect SKILL.md (single source of truth).
-        Runtime override: skills/self-reflect/SKILL.md shadows built-in."""
+        Walks the same path as user-submitted tasks so the user can see it in inbox/.
+        File name: 10-self-reflect-{YYYY-MM-DD-HH}.md (priority=10, hourly granularity)."""
         now = time.time()
         if self.SELF_REFLECT_INTERVAL <= 0 or now - self._last_self_reflect < self.SELF_REFLECT_INTERVAL:
             return False
@@ -73,8 +72,10 @@ class Agent:
             logger.warning("[agent] self-reflect SKILL.md not found — skipping")
             return False
         requirement = skill_file.read_text(encoding='utf-8')
-        tid = scheduler.create_task(requirement, priority=10, source_file="self-reflect")
-        logger.info(f"[agent] auto-created self-reflection task {tid}")
+        stamp = time.strftime("%Y-%m-%d-%H", time.localtime())
+        inbox_file = config.INBOX_DIR / f"10-self-reflect-{stamp}.md"
+        inbox_file.write_text(requirement, encoding="utf-8")
+        logger.info(f"[agent] dropped self-reflect inbox file {inbox_file.name}")
 
     # ── Tick loop ───────────────────────────────────────────────
 
