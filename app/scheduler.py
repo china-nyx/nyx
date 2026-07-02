@@ -14,9 +14,7 @@ Done tasks are removed from the active set — scheduler only scans active tids 
         ├── note.md           ← cross-session context
         └── result.md         ← final output when done
 
-Scheduling rules (priority order):
-  1. Running tasks with highest priority
-  2. New tasks → enter running
+Scheduling rules: running tasks first (highest priority), then new tasks.
 """
 import os
 import time
@@ -147,7 +145,7 @@ def _next_tid() -> str:
 
 
 def create_task(requirement: str, priority: int = 50,
-                parent_tid: Optional[str] = None, source_file: str = "") -> str:
+                source_file: str = "") -> str:
     """Create a new task from a requirement. Returns tid."""
     tid = _next_tid()
     tdir = config.TASK_DIR / tid
@@ -157,12 +155,10 @@ def create_task(requirement: str, priority: int = 50,
     _write(tid, "priority", str(priority))
     _write(tid, "requirement.md", requirement)
     _write(tid, "note.md", "")
-    if parent_tid:
-        _write(tid, "parent_tid", parent_tid)
     if source_file:
         _write(tid, "source_file", source_file)
 
-    logger.info(f"[sched] created task {tid} (pri={priority}, parent={parent_tid})")
+    logger.info(f"[sched] created task {tid} (pri={priority})")
     _add_active(tid)
     _update_index()
     return tid
@@ -179,25 +175,6 @@ def set_state(tid: str, state: str) -> None:
 def get_state(tid: str) -> Optional[str]:
     return _read(tid, "state")
 
-
-def set_upgrade_waiting(tid: str, child_tid: str, resume_target: str) -> None:
-    """Mark task as waiting for a child upgrade task to complete."""
-    set_state(tid, "upgrade-waiting")
-    _write(tid, "pending_upgrade_tid", child_tid)
-    _write(tid, "resume_target", resume_target)
-
-
-def check_resume(tid: str) -> bool:
-    """Check if an upgrade-waiting task's child is done. If so, restore to running."""
-    state = get_state(tid)
-    if state != "upgrade-waiting":
-        return False
-    child_tid = _read(tid, "pending_upgrade_tid")
-    if child_tid and get_state(child_tid) == "done":
-        set_state(tid, "running")
-        logger.info(f"[sched] {tid} resumed (child {child_tid} done)")
-        return True
-    return False
 
 
 def mark_done(tid: str, result: str = "") -> None:
@@ -222,9 +199,6 @@ def scan_tasks() -> List[Tuple[str, Dict]]:
             "state": state,
             "priority": priority,
             "source_file": _read(tid, "source_file"),
-            "parent_tid": _read(tid, "parent_tid"),
-            "pending_upgrade_tid": _read(tid, "pending_upgrade_tid"),
-            "resume_target": _read(tid, "resume_target"),
         }))
     return tasks
 
@@ -232,25 +206,14 @@ def scan_tasks() -> List[Tuple[str, Dict]]:
 def pick_next_task() -> Optional[Tuple[str, Dict]]:
     """Pick the next task to run. Returns (tid, info) or None.
 
-    Priority order:
-      1. Tasks whose upgrade child is done → resume to running
-      2. Running/upgrade-waiting tasks with pending_upgrade done → highest priority first
-      3. New tasks → enter scheduling
-    """
+    Priority order: running tasks first, then new tasks. Highest priority wins."""
     tasks = scan_tasks()
 
-    # Step 1: Resume tasks whose upgrade child completed
-    for tid, info in tasks:
-        if check_resume(tid):
-            info["state"] = "running"
-
-    # Step 2: Pick highest-priority running task
     running = [(tid, info) for tid, info in tasks if info["state"] == "running"]
     if running:
         running.sort(key=lambda x: -x[1]["priority"])
         return running[0]
 
-    # Step 3: Pick highest-priority new task
     new_tasks = [(tid, info) for tid, info in tasks if info["state"] == "new"]
     if new_tasks:
         new_tasks.sort(key=lambda x: -x[1]["priority"])
