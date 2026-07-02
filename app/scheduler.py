@@ -24,6 +24,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 from core import config
+from sdk.fs import ensure_dir
 from core.log import get_logger
 
 logger = get_logger(__name__)
@@ -125,7 +126,7 @@ def _read(tid: str, name: str) -> Optional[str]:
 
 def _write(tid: str, name: str, content: str) -> None:
     p = _tid_file(tid, name)
-    p.parent.mkdir(parents=True, exist_ok=True)
+    ensure_dir(p.parent)
     p.write_text(content, encoding="utf-8")
 
 
@@ -150,7 +151,7 @@ def create_task(requirement: str, priority: int = 50,
     """Create a new task from a requirement. Returns tid."""
     tid = _next_tid()
     tdir = config.TASK_DIR / tid
-    tdir.mkdir(parents=True, exist_ok=True)
+    ensure_dir(tdir)
 
     _write(tid, "state", "new")
     _write(tid, "priority", str(priority))

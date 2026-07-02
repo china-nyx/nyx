@@ -11,14 +11,12 @@ import sys
 from pathlib import Path
 from typing import Dict, Tuple
 
-from core import config
-from sdk.atomic_io import atomic_write_text
+from sdk.fs import atomic_write_text
 
 
 class Tools:
-    def __init__(self, cwd=None):
-        self.cwd = Path(cwd) if cwd else config.HOME
-        self.llm = None
+    def __init__(self, cwd: Path):
+        self.cwd = cwd
 
     def execute(self, name: str, args: Dict) -> Tuple[str, bool]:
         try:
@@ -33,19 +31,15 @@ class Tools:
         p = Path(path)
         return p if p.is_absolute() else (self.cwd / p)
 
-    # Wall-clock ceiling for bash.
-    BASH_WALL_MAX = 999999
-
     def _t_bash(self, args) -> Tuple[str, bool]:
         command = args.get("command", "")
         env = os.environ.copy()
         # Prepend .venv/bin to PATH so `python3` resolves to the project's Python 3.12
         _venv_bin = str(Path(sys.executable).parent)
         env["PATH"] = f"{_venv_bin}:{env.get('PATH', '')}"
-        # Honor caller-supplied timeout (default 120s), clamped to BASH_WALL_MAX ceiling.
         try:
-            wall_timeout = min(int(args.get("timeout", 120)), self.BASH_WALL_MAX)
-        except Exception:
+            wall_timeout = int(args.get("timeout", 120))
+        except (ValueError, TypeError):
             wall_timeout = 120
         try:
             r = subprocess.run(command, shell=True, capture_output=True,
@@ -102,8 +96,6 @@ def _tool_brief(name, args, show_full_path=False):
     args = args or {}
     if name == "bash":
         return (args.get("cmd") or args.get("command") or "").strip().replace("\n", " ")[:512]
-    if name == "http_get":
-        return str(args.get("url") or "")[:120]
     path = args.get("path") or args.get("file") or args.get("filename")
     pat = args.get("pattern") or args.get("query")
     if path and pat:
@@ -148,7 +140,7 @@ def format_tool_log(role, context, step_num, name, args, res, err, duration, *, 
     ctx = f"[{context}]"
     if context2:
         ctx += f" [{context2}]"
-    parts = [f"{ctx} · step {step_num}: {name} {status} ({duration:.1f}s) — {brief}"]
+    parts = [f"{ctx} step {step_num}: {name} {status} ({duration:.1f}s) — {brief}"]
     summary = _result_summary(res, err)
     if summary:
         parts.append(f"→ {summary}")

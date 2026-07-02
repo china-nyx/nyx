@@ -19,23 +19,23 @@ def _re_exec():
 
 def evolve(agent_fn):
     """Run an agent callable. If the repo changed (committed or dirty), commit + restart."""
-    git_obj = Git(str(config.REPO))
+    g = Git(config.REPO)
 
     # Record HEAD before the session
-    pre_head = git_obj.head()
-    logger.info(f"[evolver] session start, HEAD={pre_head[:8]}")
+    pre_head = g.short()
+    logger.info(f"[evolver] session start, HEAD={pre_head}")
 
     # Run the agent (solver.solve or hotfixer.fix)
     result = agent_fn()
 
     # Check for changes after the session
-    post_head = git_obj.head()
+    post_head = g.short()
     if post_head != pre_head:
-        logger.info(f"[evolver] HEAD changed ({pre_head[:8]} → {post_head[:8]}), restarting")
+        logger.info(f"[evolver] HEAD changed ({pre_head} → {post_head}), restarting")
         _re_exec()
-    elif git_obj.dirty():
+    elif g.dirty():
         msg = _extract_message(result)[:200]
-        git_obj.commit_all(f"nyx: {msg}")
+        g.commit(f"nyx: {msg}")
         logger.info(f"[evolver] committed dirty changes, restarting")
         _re_exec()
 

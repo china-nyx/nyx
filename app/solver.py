@@ -16,8 +16,6 @@ logger = get_logger(__name__)
 from sdk.tools import format_tool_log
 
 # Skills: loaded from REPO/skills/ (built-in) and cwd/skills/ (runtime)
-config.SKILLS_DIR.mkdir(parents=True, exist_ok=True)
-
 from sdk.skills import scan_skills
 
 
@@ -83,9 +81,10 @@ def solve(llm, executor, tools, requirement, skills_doc, tid=""):
     # Session log per task, versioned by phase + git commit hash
     import subprocess as _sub
     _ver = _sub.run(["git", "-C", str(config.REPO), "rev-parse", "--short", "HEAD"],
-                    capture_output=True, text=True).stdout.strip()[:8]
+                    capture_output=True, text=True).stdout.strip()
     sess_dir = config.TASK_DIR / (tid or "adhoc") / "sessions"
-    sess_dir.mkdir(parents=True, exist_ok=True)
+    from sdk.fs import ensure_dir
+    ensure_dir(sess_dir)
     sess = sess_dir / f"solver-{_ver}.jsonl"
 
     # Prune old sessions for this task (keep last N)

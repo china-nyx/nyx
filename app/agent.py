@@ -11,6 +11,7 @@ import time
 from pathlib import Path
 
 from core import config
+from sdk.fs import ensure_dir
 from core.git import Git
 from core.log import get_logger
 
@@ -158,7 +159,7 @@ class Agent:
         return p.read_text(encoding="utf-8").strip()
 
     def _write_file(self, tid: str, name: str, content: str) -> None:
-        (config.TASK_DIR / tid).mkdir(parents=True, exist_ok=True)
+        ensure_dir(config.TASK_DIR / tid)
         (config.TASK_DIR / tid / name).write_text(content, encoding="utf-8")
 
 
@@ -170,8 +171,7 @@ def run():
     signal.signal(signal.SIGINT, _sig)
     (config.HOME / "nyx.pid").write_text(str(os.getpid()))
 
-    git = Git()
-    git.ensure_repo()
+    git = Git(config.REPO)
     logger.info(f"NYX up (pid {os.getpid()}, version {git.short()})")
 
     agent = Agent(llm=LLM())

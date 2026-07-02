@@ -6,7 +6,6 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parent.parent
 
 HOME = Path.cwd().resolve()
-# WorkingDirectory in systemd unit determines runtime root
 if HOME == REPO or str(HOME).startswith(str(REPO) + os.sep):
     raise RuntimeError(f"Runtime root ({HOME}) must not be inside the source repo ({REPO}).")
 
@@ -24,7 +23,7 @@ _SETTINGS_FILE = _CONFIG_DIR / "settings.json"
 if not _SETTINGS_FILE.exists():
     raise RuntimeError(
         f"Missing settings file: {_SETTINGS_FILE}\n"
-        f"Create it with the required keys (see config/settings.json.example)"
+        f"See README.md for the required keys."
     )
 import json as _json
 try:
@@ -41,17 +40,18 @@ if not LLM_BASE_URL or not LLM_MODEL:
 LLM_TIMEOUT = int(os.environ.get("NYX_LLM_TIMEOUT") or _settings.get("llm", {}).get("timeout", 300))
 
 
-# Smoke check limits
-SANDBOX_TIMEOUT = int(os.environ.get("NYX_SANDBOX_TIMEOUT") or _settings.get("sandbox", {}).get("timeout", 180))
-SANDBOX_MEM_MB = int(os.environ.get("NYX_SANDBOX_MEM_MB") or _settings.get("sandbox", {}).get("mem_mb", 4096))
-
 # Logging
-LOG_MAX_MB = int(os.environ.get("NYX_LOG_MAX_MB") or _settings.get("log", {}).get("max_mb", 50))
 KEEP_SESSIONS = int(os.environ.get("NYX_KEEP_SESSIONS") or _settings.get("log", {}).get("keep_sessions", 300))
 
 # Git / entry
 ENTRY = os.environ.get("NYX_ENTRY", "app.agent:run")
 
-# Ensure directories exist
-for _d in [HOME, INBOX_DIR, TASK_DIR, LOG_DIR]:
-    _d.mkdir(parents=True, exist_ok=True)
+# Runtime directories that must exist
+_RUNTIME_DIRS = [INBOX_DIR, TASK_DIR, SKILLS_DIR, SANDBOX_DIR]
+
+
+def ensure_runtime_dirs():
+    """Ensure all runtime directories exist."""
+    from sdk.fs import ensure_dir
+    for _d in _RUNTIME_DIRS:
+        ensure_dir(_d)

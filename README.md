@@ -132,12 +132,7 @@ All runtime config is in `config/settings.json`. Env vars override file values:
         "api_key": "",
         "timeout": 300
     },
-    "sandbox": {
-        "timeout": 180,
-        "mem_mb": 4096
-    },
     "log": {
-        "max_mb": 50,
         "keep_sessions": 300
     }
 }

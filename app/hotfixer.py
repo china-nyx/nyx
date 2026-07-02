@@ -1,11 +1,13 @@
 """Hotfixer — mini code-fix agent. 4 base tools only, modifies repo source."""
 import json
 import subprocess
+import time
 
 from core import config
 from core.log import get_logger
 
 logger = get_logger(__name__)
+from sdk.tools import format_tool_log
 
 SYSTEM_TEMPLATE = """\
 You are NYX's hotfixer. Fix the following issue by modifying source code in the repo.
@@ -34,17 +36,21 @@ def fix(llm, executor, requirement: str, tid: str = "") -> dict:
 
     _ver = subprocess.run(
         ["git", "-C", str(config.REPO), "rev-parse", "--short", "HEAD"],
-        capture_output=True, text=True).stdout.strip()[:8]
+        capture_output=True, text=True).stdout.strip()
     sess_dir = config.TASK_DIR / (tid or "adhoc") / "sessions"
-    sess_dir.mkdir(parents=True, exist_ok=True)
+    from sdk.fs import ensure_dir
+    ensure_dir(sess_dir)
     sess = sess_dir / f"hotfix-{_ver}.jsonl"
 
     _step_num = 0
+    _last_step_time = time.time()
 
     def _on_step(name, args, res_, err):
-        nonlocal _step_num
+        nonlocal _step_num, _last_step_time
         _step_num += 1
-        logger.info(f"[hotfixer] step {_step_num}: {name} {'✓' if not err else '✗'}")
+        duration = round(time.time() - _last_step_time, 1)
+        _last_step_time = time.time()
+        logger.info(format_tool_log("hotfixer", tid, _step_num, name, args, res_, err, duration))
         try:
             rec = {"type": "tool", "tool": name, "step": _step_num,
                    "args": {k: str(v)[:200] for k, v in (args or {}).items()},
