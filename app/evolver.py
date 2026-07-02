@@ -33,9 +33,9 @@ def evolve(agent_fn):
     if post_head != pre_head:
         logger.info(f"[evolver] HEAD changed ({pre_head[:8]} → {post_head[:8]}), restarting")
         _re_exec()
-    elif git_obj.dirty(cwd=str(config.REPO)):
+    elif git_obj.dirty():
         msg = _extract_message(result)[:200]
-        git_obj.commit_all(f"nyx: {msg}", cwd=str(config.REPO))
+        git_obj.commit_all(f"nyx: {msg}")
         logger.info(f"[evolver] committed dirty changes, restarting")
         _re_exec()
 
