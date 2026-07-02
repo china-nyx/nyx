@@ -44,7 +44,7 @@ LLM_TIMEOUT = int(os.environ.get("NYX_LLM_TIMEOUT") or _settings.get("llm", {}).
 KEEP_SESSIONS = int(os.environ.get("NYX_KEEP_SESSIONS") or _settings.get("log", {}).get("keep_sessions", 300))
 
 # Git / entry
-ENTRY = os.environ.get("NYX_ENTRY", "app.agent:run")
+ENTRY = os.environ.get("NYX_ENTRY", "app.main:run")
 
 # Runtime directories that must exist
 _RUNTIME_DIRS = [INBOX_DIR, TASK_DIR, SKILLS_DIR, SANDBOX_DIR]
