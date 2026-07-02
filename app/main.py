@@ -140,12 +140,12 @@ def run():
     """Main entry point: signal handling + agent tick loop."""
     signal.signal(signal.SIGTERM, _sig)
     signal.signal(signal.SIGINT, _sig)
-    (config.HOME / "nyx.pid").write_text(str(os.getpid()))
 
     git = Git(config.REPO)
     logger.info(f"NYX up (pid {os.getpid()}, version {git.short()})")
 
     agent = Agent(llm=LLM())
+    _pid_written = False
 
     while _running:
         try:
@@ -153,6 +153,10 @@ def run():
                 agent.tick()
         except _Shutdown:
             pass
+        else:
+            if not _pid_written:
+                (config.HOME / "nyx.pid").write_text(str(os.getpid()))
+                _pid_written = True
 
         sleep_n = 8
         for _ in range(sleep_n):
