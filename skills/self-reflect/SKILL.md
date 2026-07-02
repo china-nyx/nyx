@@ -45,15 +45,15 @@ du -sh sandbox/ 2>/dev/null
 
 ---
 
-### Step 1: Audit Source Code (`src/`)
+### Step 1: Audit Source Code (repo)
 
-The source code at `src/` (read-only symlink to the git repo) should be healthy, well-documented, and consistent.
+The source code in the repo directory should be healthy, well-documented, and consistent.
 
 #### 1a: Check for TODO/FIXME/HACK Markers
 
 ```bash
 # Find any lingering TODOs, FIXMEs, HACKs in source
-grep -rn "TODO\|FIXME\|HACK\|XXX\|STUB" src/ --include="*.py" | grep -v ".venv"
+cd $REPO && grep -rn "TODO\|FIXME\|HACK\|XXX\|STUB" . --include="*.py" | grep -v ".venv"
 ```
 - Note each finding: is it still relevant? Should it be addressed? Add to `issues.md` if actionable.
 
@@ -209,7 +209,7 @@ For each skill:
 
 ```bash
 # Check if skills reference source files that still exist
-grep -rh "src/" skills/*/SKILL.md | grep -oP "src/[a-zA-Z0-9_/.-]+" | sort -u | while read f; do
+# Check if skills reference repo paths that still exist (manual review)
     if [ ! -e "$f" ]; then
         echo "SKILL REFERENCE TO MISSING FILE: $f"
     fi
@@ -218,7 +218,7 @@ done
 
 #### 3d: Note Skill Improvements
 
-If a skill's steps can be clearer, more robust, or more efficient, note the improvement. Skills in `src/skills/` can be updated via `needs_upgrade`. Skills deployed to runtime `skills/` mirror what's in source.
+If a skill's steps can be clearer, more robust, or more efficient, update them directly via `edit` (runtime skills) or modify the repo version (evolver will auto-commit + restart).
 
 ---
 
@@ -374,7 +374,7 @@ Ask yourself:
 If you discover improvements to this skill's procedure, **apply them directly** — no restart needed.
 
 **How it works:**
-The writable runtime path is `skills/self-reflect/SKILL.md` (under cwd). The built-in at `src/skills/self-reflect/SKILL.md` is read-only.
+The writable runtime path is `skills/self-reflect/SKILL.md` (under cwd). The built-in in the repo can be modified directly — evolver will auto-commit + restart.
 
 1. **Check if runtime override exists:**
    ```bash
@@ -394,8 +394,8 @@ The writable runtime path is `skills/self-reflect/SKILL.md` (under cwd). The bui
 - Update paths that have changed (e.g., memory moved from flat files to subdirectories)
 - Clarify ambiguous instructions
 
-**When to use needs_upgrade instead:**
-Only return `needs_upgrade` if the improvement requires changing NYX source code (Python files in `src/`). SKILL.md changes are always done directly via `write` or `edit`.
+**Modifying repo code:**
+You can modify Python files in the repo directly — evolver will detect changes and auto-commit + restart. SKILL.md changes are done directly via `write` or `edit`.
 
 ---
 
@@ -471,8 +471,8 @@ PRIORITY: <N>
 - Don't duplicate: if an active task already addresses the issue, skip it
 - Be specific in the description — include file paths, line numbers, concrete steps
 - After creating a task, log it in journal.md ("Created inbox task: 80-fix-doc-drift.md")
-- If the fix requires changing NYX source code, still return `needs_upgrade` instead
+- If the fix requires changing NYX source code, modify it directly (evolver will auto-commit + restart)
 
 ## Output Format
 
-When done reflecting, write your findings to `sandbox/memory/journal/current.md` as a new entry. Return status="done" with a brief summary of what you found and decided. If code or skill changes are needed, return status="needs_upgrade".
+When done reflecting, write your findings to `sandbox/memory/journal/current.md` as a new entry. Return a brief summary of what you found and decided.
