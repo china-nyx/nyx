@@ -34,8 +34,8 @@ def evolve(agent_fn):
         logger.info(f"[evolver] HEAD changed ({pre_head} → {post_head}), restarting")
         _re_exec()
     elif g.dirty():
-        msg = _extract_message(result)[:200]
-        g.commit(f"nyx: {msg}")
+        msg = _extract_message(result)
+        g.commit(f"nyx: {msg[:200]}")
         logger.info(f"[evolver] committed dirty changes, restarting")
         _re_exec()
 
@@ -43,7 +43,7 @@ def evolve(agent_fn):
 
 
 def _extract_message(result):
-    """Extract a commit message from agent result (plain text)."""
+    """Extract a commit message from agent result (full text)."""
     if isinstance(result, str):
-        return result[:200] or "upgrade"
+        return result.strip() or "upgrade"
     return "upgrade"

@@ -26,8 +26,8 @@ Repo: {repo}
 First summarize what you changed, then list changes one line per file."""
 
 
-def fix(llm, executor, requirement: str, tid: str = "") -> dict:
-    """Run a hotfix LLM session. Returns dict with content key."""
+def fix(llm, executor, requirement: str, tid: str = "") -> str:
+    """Run a hotfix LLM session. Returns assistant text (for evolver → commit message)."""
     system_prompt = SYSTEM_TEMPLATE.format(
         cwd=str(config.HOME),
         repo=str(config.REPO),
