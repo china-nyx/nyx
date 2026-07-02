@@ -9,12 +9,6 @@ from sdk.agent_session import run_session
 from sdk.skills import scan_skills
 
 
-def _result_brief(res, err):
-    s = str(res).strip().replace("\n", " ")
-    head = s[:160] + ("\u2026" if len(s) > 160 else "")
-    return ("ERR: " if err else "") + head
-
-
 SYSTEM_TEMPLATE = """\
 You ARE NYX — a self-evolving agent. Solve tasks by actually executing work with your tools.
 
@@ -78,7 +72,6 @@ def solve(llm, executor, tools, requirement, skills_doc, tid=""):
                       system_prompt=_build_system_prompt(),
                       user_content=user,
                       tools=tools, temperature=0.7,
-                      record_fn=_record,
                       prune_sessions=True, log_run=True)
 
     if not out:

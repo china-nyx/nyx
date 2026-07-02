@@ -1,23 +1,16 @@
 """Agent session helpers — shared on_step factory and session runner."""
 import json
-import subprocess
 import time
 from pathlib import Path
 from typing import Callable, Dict, List, Optional
 
 from core import config
+from core.git import Git
 from core.log import get_logger
 from sdk.fs import ensure_dir
 
 logger = get_logger(__name__)
 from sdk.tools import format_tool_log
-
-
-def _git_short() -> str:
-    """Get short git commit hash of the repo."""
-    r = subprocess.run(["git", "-C", str(config.REPO), "rev-parse", "--short", "HEAD"],
-                       capture_output=True, text=True)
-    return r.stdout.strip()
 
 
 def _session_file(sess_dir: Path, role: str, ver: str) -> Path:
@@ -32,15 +25,13 @@ def _write_session_record(sess_path: str, rec: Dict):
         f.write(json.dumps(rec, ensure_ascii=False) + "\n")
 
 
-def make_on_step(role: str, tid: str, sess_path: str = None,
-                 record_fn: Optional[Callable] = None):
+def make_on_step(role: str, tid: str, sess_path: str = None):
     """Create an on_step callback with shared step counter + duration tracking.
 
     Args:
         role: "solver" or "hotfixer" (used in log prefix)
         tid: task id
         sess_path: if set, append JSONL records to this file
-        record_fn: optional fn(step_num, name, args, res, err, duration) -> dict
 
     Returns: callable(name, args, res, err) matching run_agent's on_step signature.
     """
@@ -57,7 +48,7 @@ def make_on_step(role: str, tid: str, sess_path: str = None,
 
         if sess_path is not None:
             try:
-                rec = record_fn(step, name, args, res_, err, duration) if record_fn else {
+                rec = {
                     "type": "tool", "tool": name, "step": step,
                     "duration": duration, "ok": not err,
                     "result": str(res_)[:1000],
@@ -73,7 +64,6 @@ def run_session(llm, executor, *,
                 role: str, tid: str,
                 system_prompt: str, user_content: str,
                 tools: List[Dict] = None, temperature: float = 0.5,
-                record_fn: Optional[Callable] = None,
                 prune_sessions: bool = False,
                 log_run: bool = False) -> str:
     """Run an agent session with shared setup (session file, on_step, run_agent).
@@ -87,13 +77,12 @@ def run_session(llm, executor, *,
         user_content: user message content
         tools: tool definitions (default: ALL_TOOLS)
         temperature: model temperature
-        record_fn: custom session record builder
         prune_sessions: if True, prune old session files beyond KEEP_SESSIONS
         log_run: if True, write a "run" record at start and "output" record at end
     """
     from sdk.agent import run_agent
 
-    ver = _git_short()
+    ver = Git(config.REPO).short()
     sess_dir = config.TASK_DIR / (tid or "adhoc") / "sessions"
     ensure_dir(sess_dir)
     sess_path = str(_session_file(sess_dir, role, ver))

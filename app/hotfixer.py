@@ -27,11 +27,6 @@ def fix(llm, executor, requirement: str, tid: str = "") -> str:
         requirement=requirement,
     )
 
-    def _record(step, name, args, res_, err, duration):
-        return {"type": "tool", "tool": name, "step": step,
-                "args": {k: str(v)[:200] for k, v in (args or {}).items()},
-                "ok": not err, "result": str(res_)[:1000]}
-
     return run_session(llm, executor,
                        role="hotfixer", tid=tid,
                        system_prompt=system_prompt,
