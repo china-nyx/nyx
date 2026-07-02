@@ -60,13 +60,12 @@ def run_agent(client: ChatClient, messages: List[Dict],
     history grows too large for the context window, older tool exchanges are compacted
     into a summary so work can continue without losing the thread.
 
-    Returns: {"content": str, "calls": list, "results": list}
+    Returns: assistant message dict with "content" key (from API or synthesized).
     """
     tools = tools or ALL_TOOLS
     terminal = set(terminal_tools or [])
     _response_format = response_format
     msgs = list(messages)
-    calls, results = [], []
     _initial_len = len(msgs)
 
     # Duplicate detection: track MD5 hashes of tool outputs
@@ -94,7 +93,8 @@ def run_agent(client: ChatClient, messages: List[Dict],
         m = resp["choices"][0]["message"]
         tcs = m.get("tool_calls") or []
         if not tcs:
-            return {"content": _strip_think(m.get("content") or ""), "calls": calls, "results": results}
+            m["content"] = _strip_think(m.get("content") or "")
+            return m
         msgs.append(m)
 
         for tc in tcs:
@@ -152,7 +152,7 @@ def run_agent(client: ChatClient, messages: List[Dict],
             msgs.append({"role": "tool", "tool_call_id": tc.get("id", ""),
                          "content": tool_content})
             if name in terminal and not err:
-                return {"content": str(res)[:300], "calls": calls, "results": results}
+                return {"role": "assistant", "content": str(res)[:300]}
 
         # ── Context compaction ────────────────────────────────────────
         if should_compact(estimate_context_tokens(msgs), len(msgs)):
@@ -179,4 +179,4 @@ def run_agent(client: ChatClient, messages: List[Dict],
                 )}
                 msgs = msgs[:_initial_len] + [summary_msg] + msgs[_cut_idx:]
 
-    return {"content": "", "calls": calls, "results": results}
+    return {"role": "assistant", "content": ""}
