@@ -1,7 +1,4 @@
-"""LLM client — HTTP layer for OpenAI-compatible API.
-
-Provides chat() for free-text completion.
-"""
+"""LLM client — HTTP layer for OpenAI-compatible API."""
 import json
 import logging
 import os
@@ -11,14 +8,24 @@ import time
 import urllib.request
 from typing import Dict, List, Optional
 
+from sdk.schemas import (
+    ChatCompletionResponse,
+    ChatMessage,
+    ChatChoice,
+    ChatResponseMessage,
+    Usage,
+)
+
 logger = logging.getLogger(__name__)
 
+
+# ── Strip thinking tags ─────────────────────────────────────────────
 
 def _strip_think(text: str) -> str:
     """Strip thinking tags and leaked XML fragments from LLM output."""
     if not text:
         return ""
-    text = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL | re.IGNORECASE)
+    text = re.sub(r" thinking.*? ", "", text, flags=re.DOTALL | re.IGNORECASE)
     text = re.sub(
         r"<[^>]*(?:think|anth|antth)[^>]*>.*?</[^>]*(?:think|anth|antth)[^>]*>",
         "", text, flags=re.DOTALL | re.IGNORECASE,
@@ -31,11 +38,11 @@ def _strip_think(text: str) -> str:
         text = rest
     text = re.sub(r"<function=[^>]*>.*?</function>", "", text, flags=re.DOTALL | re.IGNORECASE)
     text = re.sub(
-        r"<(?:issue_description|reset|task|context)[^>]*>.*?</(?:issue_description|reset|task|context)>",
+        r"<(?:issue_description|reset|task|context)[^>]*>.*?</(?:issue_description|reset|task|context)",
         "", text, flags=re.DOTALL | re.IGNORECASE,
     )
     m2 = re.match(
-        r"^\s*<(?:function=[^>]*|issue_description[^>]*|reset[^>]*|task[^>]*|context[^>]*|\|mask_start\|)>",
+        r"^\s*<(?:function=[^>]*|issue_description[^>]*|reset[^>]*|task[^>]*|context[^>]*|\|mask_start\|)",
         text, flags=re.IGNORECASE,
     )
     if m2:
@@ -57,6 +64,163 @@ def _prune_tool_output(tool_name: str, content: str, max_chars: int = 8000) -> s
                  + content[-half:])
     return truncated
 
+
+# ── Merged JSON Schema mode ────────────────────────────────────────
+
+def _build_merged_schema(tools: List[Dict], business_schema: Optional[Dict] = None) -> Dict:
+    """Build a merged JSON Schema encoding both tool calls and business response."""
+    # Build action items from tool definitions
+    tool_items = []
+    for tool in tools:
+        fn = tool.get("function", {})
+        params = fn.get("parameters", {"type": "object"})
+        tool_items.append({
+            "type": "object",
+            "properties": {
+                "tool_name": {"type": "string", "enum": [fn["name"]]},
+                "tool_arguments": params,
+            },
+            "required": ["tool_name", "tool_arguments"],
+            "additionalProperties": False,
+        })
+
+    properties: Dict = {
+        "thought": {
+            "type": "string",
+            "description": "Analyze the current situation and decide what to do next."
+        },
+        "actions": {
+            "type": "array",
+            "description": "If you need to use tools, put them here. Otherwise leave empty.",
+            "items": tool_items[0] if len(tool_items) == 1 else {"anyOf": tool_items},
+        },
+    }
+
+    if business_schema:
+        properties["result"] = {
+            "type": "object",
+            "description": "Final answer when no more tools are needed. Only provide when actions is empty.",
+            **business_schema,
+        }
+
+    return {
+        "type": "json_schema",
+        "json_schema": {
+            "name": "agent_response",
+            "strict": True,
+            "schema": {
+                "type": "object",
+                "properties": properties,
+                "required": ["thought", "actions"],
+                "additionalProperties": False,
+            }
+        }
+    }
+
+
+def _extract_business_schema(response_format: Optional[Dict]) -> Optional[Dict]:
+    """Extract inner schema dict from a response_format payload."""
+    if not isinstance(response_format, dict):
+        return None
+    if "json_schema" in response_format:
+        inner = response_format["json_schema"]
+        return inner.get("schema") if isinstance(inner, dict) else None
+    if "schema" in response_format:
+        rf_schema = response_format["schema"]
+        return rf_schema if isinstance(rf_schema, dict) else None
+    return None
+
+
+def _parse_merged_response(raw_text: str) -> ChatCompletionResponse:
+    """Parse JSON text from merged-schema mode into ChatCompletionResponse.
+
+    Returns a synthetic ChatCompletionResponse where:
+      - actions  → tool_calls in the message
+      - result   → content in the message
+    """
+    try:
+        parsed = json.loads(raw_text)
+    except json.JSONDecodeError:
+        # Not valid JSON — treat as plain text
+        return ChatCompletionResponse(
+            id="merged-fallback",
+            object="chat.completion",
+            model="merged",
+            created=0,
+            choices=[ChatChoice(
+                index=0,
+                message=ChatResponseMessage(role="assistant", content=raw_text),
+                finish_reason="stop",
+            )],
+            usage=Usage(completion_tokens=0, prompt_tokens=0, total_tokens=0),
+        )
+
+    actions = parsed.get("actions", [])
+    result = parsed.get("result")
+
+    if actions:
+        # Convert actions to standard tool_calls format
+        tool_calls = []
+        for i, action in enumerate(actions):
+            tool_calls.append({
+                "id": f"call_{i}",
+                "type": "function",
+                "function": {
+                    "name": action["tool_name"],
+                    "arguments": json.dumps(action.get("tool_arguments", {}))
+                }
+            })
+        content = parsed.get("thought", "")
+        return ChatCompletionResponse(
+            id="merged-tool-calls",
+            object="chat.completion",
+            model="merged",
+            created=0,
+            choices=[ChatChoice(
+                index=0,
+                message=ChatResponseMessage(
+                    role="assistant",
+                    content=content,
+                    tool_calls=tool_calls,
+                ),
+                finish_reason="tool_calls",
+            )],
+            usage=Usage(completion_tokens=0, prompt_tokens=0, total_tokens=0),
+        )
+
+    if result:
+        return ChatCompletionResponse(
+            id="merged-result",
+            object="chat.completion",
+            model="merged",
+            created=0,
+            choices=[ChatChoice(
+                index=0,
+                message=ChatResponseMessage(
+                    role="assistant",
+                    content=json.dumps(result) if isinstance(result, dict) else str(result),
+                ),
+                finish_reason="stop",
+            )],
+            usage=Usage(completion_tokens=0, prompt_tokens=0, total_tokens=0),
+        )
+
+    # No actions and no result — return raw text
+    return ChatCompletionResponse(
+        id="merged-fallback",
+        object="chat.completion",
+        model="merged",
+        created=0,
+        choices=[ChatChoice(
+            index=0,
+            message=ChatResponseMessage(role="assistant", content=raw_text),
+            finish_reason="stop",
+        )],
+        usage=Usage(completion_tokens=0, prompt_tokens=0, total_tokens=0),
+    )
+
+
+# ── LLM class ────────────────────────────────────────────────────
 
 class LLM:
     """HTTP client for OpenAI-compatible LLM API."""
@@ -90,21 +254,40 @@ class LLM:
 
         raise last_err
 
-    def chat(self, messages: List[Dict], temperature: float = 0.6, max_tokens: int = 2048,
-             response_format: Optional[Dict] = None) -> Dict:
-        """Non-streaming chat completion. Returns AssistantMessage dict."""
-        body = {"model": self.model, "messages": messages,
-                "temperature": temperature, "max_tokens": max_tokens, "stream": False}
+    def chat(self, messages: list[ChatMessage], *, temperature: float = 0.6,
+             max_tokens: int = 2048, tools: List[Dict] = None,
+             response_format: Optional[Dict] = None) -> ChatCompletionResponse:
+        """Non-streaming chat completion.
+
+        When both ``tools`` and ``response_format`` are present, enters
+        *merged-schema mode*: encodes all tool definitions into the JSON
+        schema so the model can emit both tool calls and a final structured
+        answer in a single response.  The caller receives a standard
+        ``ChatCompletionResponse`` regardless of the internal mode.
+        """
+        _msgs = [m.model_dump(exclude_none=True) for m in messages]
+        _merged_mode = bool(tools and response_format)
+
+        if _merged_mode:
+            business_schema = _extract_business_schema(response_format)
+            merged = _build_merged_schema(tools, business_schema)
+            body = {
+                "model": self.model, "messages": _msgs,
+                "temperature": temperature, "max_tokens": max_tokens,
+                "stream": False, "response_format": merged,
+            }
+            raw = self._post(body)
+            msg = raw["choices"][0]["message"]
+            return _parse_merged_response(msg.get("content", ""))
+
+        body = {
+            "model": self.model, "messages": _msgs,
+            "temperature": temperature, "max_tokens": max_tokens,
+            "stream": False,
+        }
+        if tools:
+            body["tools"] = tools
         if response_format:
             body["response_format"] = response_format
-        resp = self._post(body)
-        msg = resp["choices"][0]["message"]
-        content = _strip_think(msg.get("content") or msg.get("reasoning_content") or "")
-        return {
-            "role": "assistant",
-            "content": content,
-            "stopReason": resp["choices"][0].get("finish_reason", "stop"),
-            "usage": {k: resp.get("usage", {}).get(k, 0) for k in ("input","output","cacheRead","cacheWrite","totalTokens")},
-            "timestamp": int(time.time() * 1000),
-        }
-
+        raw = self._post(body)
+        return ChatCompletionResponse.model_validate(raw)

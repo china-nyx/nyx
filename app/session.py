@@ -9,6 +9,7 @@ from typing import Callable, Dict, List, Optional
 from app.config import config
 from sdk.fs import ensure_dir
 from sdk.git import Git
+from sdk.schemas import ChatMessage
 
 logger = logging.getLogger(__name__)
 
@@ -159,8 +160,8 @@ def run_session(llm, executor, *,
 
     res = run_agent(llm,
         messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_content},
+            ChatMessage(role="system", content=system_prompt),
+            ChatMessage(role="user", content=user_content),
         ],
         tool_executor=executor, tools=tools,
         temperature=temperature, on_step=_on_step)

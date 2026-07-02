@@ -229,7 +229,7 @@ def summarize(client: ChatClient, system_msg: str, compactable: List[Dict],
     else:
         user_parts.append(COMPACT_PROMPT)
 
-    result = client.chat(
+    resp = client.chat(
         [
             {"role": "system", "content": COMPACT_SYSTEM},
             {"role": "user", "content": "\n\n".join(user_parts)},
@@ -237,7 +237,7 @@ def summarize(client: ChatClient, system_msg: str, compactable: List[Dict],
         temperature=0.3,
         max_tokens=_COMPACT_SUMMARIZE_TOKENS,
     )
-    return (result.get("content") or "").strip()
+    return (resp.choices[0].message.content or "").strip()
 
 
 # ── Full compaction step ────────────────────────────────────────────

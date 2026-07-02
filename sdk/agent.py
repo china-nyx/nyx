@@ -21,6 +21,7 @@ from sdk.compaction import (
     summarize,
 )
 from sdk.llm import _prune_tool_output, _strip_think
+from sdk.schemas import ChatMessage, ChatCompletionResponse
 from sdk.tools import ALL_TOOLS
 
 logger = logging.getLogger(__name__)
@@ -39,12 +40,12 @@ def _make_args_key(tool_name: str, args: dict) -> tuple:
 
 
 class ChatClient:
-    """Minimal interface required by run_agent to talk to the LLM.
-
-    The LLM class in sdk.llm implements this via _post() and chat().
-    """
+    """Minimal interface required by run_agent to talk to the LLM."""
     model: str
-    _post: Callable[[Dict], Dict]
+
+    def chat(self, messages: list[ChatMessage], *, temperature: float,
+             max_tokens: int, response_format: Optional[Dict] = None) -> ChatCompletionResponse:
+        ...
 
 
 def _assistant_message(content: str, *, stop_reason: str = "stop",
@@ -66,7 +67,12 @@ def _assistant_message(content: str, *, stop_reason: str = "stop",
     return msg
 
 
-def run_agent(client: ChatClient, messages: List[Dict],
+def _msgs_to_dicts(msgs: list[ChatMessage]) -> list[dict]:
+    """Convert ChatMessage list to raw dict list for internal functions."""
+    return [m.model_dump(exclude_none=True) for m in msgs]
+
+
+def run_agent(client: ChatClient, messages: list[ChatMessage],
               tool_executor: Callable[[str, Dict], tuple], *,
               temperature: float = 0.5,
               on_step: Optional[Callable] = None,
@@ -99,37 +105,40 @@ def run_agent(client: ChatClient, messages: List[Dict],
     _repeat_cached: Dict[str, str] = {}
 
     while True:
-        _context_tokens = estimate_context_tokens(msgs)
+        _context_tokens = estimate_context_tokens(_msgs_to_dicts(msgs))
         _clamped_max = clamp_max_tokens(4096, _context_tokens)
 
-        body = {"model": client.model, "messages": msgs, "tools": tools,
-                "temperature": temperature, "max_tokens": _clamped_max, "stream": False}
-        if _response_format:
-            body["response_format"] = _response_format
-        resp = client._post(body)
-        if not resp.get("choices"):
+        resp = client.chat(
+            msgs,
+            temperature=temperature,
+            max_tokens=_clamped_max,
+            tools=tools if tools else None,
+            response_format=_response_format,
+        )
+
+        if not resp.choices:
             break
-        m = resp["choices"][0]["message"]
-        tcs = m.get("tool_calls") or []
+        message = resp.choices[0].message
+        tcs = message.tool_calls or []
         if not tcs:
-            content = _strip_think(m.get("content") or "")
-            stop_reason = resp["choices"][0].get("finish_reason", "stop")
-            usage = resp.get("usage", {})
-            msg = {
+            content = _strip_think(message.content or "")
+            stop_reason = resp.choices[0].finish_reason
+            return {
                 "role": "assistant",
                 "content": content,
                 "stopReason": stop_reason,
-                "usage": {k: usage.get(k, 0) for k in ("input","output","cacheRead","cacheWrite","totalTokens")},
+                "usage": {k: (resp.usage.model_dump() if resp.usage else {}).get(k, 0)
+                          for k in ("input", "output", "cacheRead", "cacheWrite", "totalTokens")},
                 "timestamp": int(time.time() * 1000),
             }
-            return msg
-        msgs.append(m)
+        msgs.append(ChatMessage(role=message.role, content=message.content,
+                                 tool_calls=[tc.model_dump() for tc in tcs] if tcs else None))
 
         for tc in tcs:
-            fn = tc.get("function", {})
-            name = fn.get("name", "")
+            fn = tc.function
+            name = fn.name
             try:
-                args = json.loads(fn.get("arguments") or "{}")
+                args = json.loads(fn.arguments or "{}")
             except Exception:
                 args = {}
 
@@ -151,20 +160,15 @@ def run_agent(client: ChatClient, messages: List[Dict],
                 )
                 res = _cached_result + "\n\n" + _warning
                 err = False
-                calls.append({"name": name, "args": args, "error": False})
-                results.append(res)
                 if on_step:
                     on_step(name, args, res, False)
-                msgs.append({"role": "tool", "tool_call_id": tc.get("id", ""),
-                             "content": _warning})
+                msgs.append(ChatMessage(role="tool", tool_call_id=tc.id, content=_warning))
                 continue
 
             res, err = tool_executor(name, args)
             if not err:
                 _repeat_cached[_args_key] = str(res)
             _repeat_history.append(_args_key)
-            calls.append({"name": name, "args": args, "error": err})
-            results.append(res)
             if on_step:
                 on_step(name, args, res, err)
 
@@ -177,34 +181,33 @@ def run_agent(client: ChatClient, messages: List[Dict],
                 _seen_outputs.add(out_hash)
                 tool_content = _prune_tool_output(name, raw_content[:10000])
 
-            msgs.append({"role": "tool", "tool_call_id": tc.get("id", ""),
-                         "content": tool_content})
+            msgs.append(ChatMessage(role="tool", tool_call_id=tc.id, content=tool_content))
             if name in terminal and not err:
                 return _assistant_message(str(res)[:300])
 
         # ── Context compaction ────────────────────────────────────────
-        if should_compact(estimate_context_tokens(msgs), len(msgs)):
-            _cut_idx = find_cut_point(msgs, _initial_len)
+        if should_compact(estimate_context_tokens(_msgs_to_dicts(msgs)), len(msgs)):
+            _cut_idx = find_cut_point(_msgs_to_dicts(msgs), _initial_len)
             compactable = msgs[_initial_len:_cut_idx]
             if compactable:
                 _system_msg = ""
-                if msgs and msgs[0].get("role") == "system":
-                    _system_msg = msgs[0].get("content", "") or ""
+                if msgs and msgs[0].role == "system":
+                    _system_msg = msgs[0].content or ""
 
-                summary_text = summarize(client, _system_msg, compactable,
+                summary_text = summarize(client, _system_msg, _msgs_to_dicts(compactable),
                                          previous_summary=_previous_summary)
                 _previous_summary = summary_text
                 logger.info(f"[agent] compaction: summarized {len(compactable)} messages -> {len(summary_text)} chars")
 
-                file_paths = extract_file_paths(compactable)
+                file_paths = extract_file_paths(_msgs_to_dicts(compactable))
                 file_note = format_file_note(file_paths)
 
                 dup_note = f" ({_dup_count} duplicate output(s) detected and skipped)" if _dup_count else ""
-                summary_msg = {"role": "user", "content": (
+                summary_msg = ChatMessage(role="user", content=(
                     f"[COMPACTED HISTORY — {len(compactable)} earlier tool exchanges, kept only the most recent for context{dup_note}]\n"
                     f"{summary_text}"
                     f"{file_note}\n\nContinue working on the task from where you left off."
-                )}
+                ))
                 msgs = msgs[:_initial_len] + [summary_msg] + msgs[_cut_idx:]
 
     return _assistant_message("", stop_reason="error", error_message="no response")

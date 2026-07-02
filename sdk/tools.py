@@ -90,39 +90,70 @@ class Tools:
         return "edited", False
 # ── Tool schemas (4 base tools; everything else is a skill) ───────────
 # Code upgrades are handled by the evolver FSM phase.
+from sdk.schemas import ToolDefinition, ToolFunction, ToolParameter
 
 _ALL_TOOL_DEFS = [
-    {"type": "function", "function": {
-        "name": "bash",
-        "description": "Execute a shell command on the host. Use for running code, processing data, "
-                       "calling system tools, installing packages, network access. Returns exit code + stdout + stderr.",
-        "parameters": {"type": "object", "properties": {
-            "command": {"type": "string", "description": "The shell command to run."},
-            "timeout": {"type": "integer", "description": "Seconds before kill (default 120)."}},
-            "required": ["command"]}}},
-
-    {"type": "function", "function": {
-        "name": "read",
-        "description": "Read a file. Optional offset (1-based start line) + limit (number of lines) to read a slice.",
-        "parameters": {"type": "object", "properties": {
-            "path": {"type": "string"}, "offset": {"type": "integer"}, "limit": {"type": "integer"}},
-            "required": ["path"]}}},
-
-    {"type": "function", "function": {
-        "name": "write",
-        "description": "Write content to a file. Creates the file if it doesn't exist, overwrites if it does. Automatically creates parent directories.",
-        "parameters": {"type": "object", "properties": {
-            "path": {"type": "string"}, "content": {"type": "string"}},
-            "required": ["path", "content"]}}},
-
-    {"type": "function", "function": {
-        "name": "edit",
-        "description": "Replace exact old_text with new_text in a file (first match only).",
-        "parameters": {"type": "object", "properties": {
-            "path": {"type": "string"}, "old_text": {"type": "string"}, "new_text": {"type": "string"}},
-            "required": ["path", "old_text", "new_text"]}}},
-
+    ToolDefinition(
+        function=ToolFunction(
+            name="bash",
+            description="Execute a shell command on the host. Use for running code, processing data, "
+                        "calling system tools, installing packages, network access. Returns exit code + stdout + stderr.",
+            parameters=ToolParameter(
+                type="object",
+                properties={
+                    "command": {"type": "string", "description": "The shell command to run."},
+                    "timeout": {"type": "integer", "description": "Seconds before kill (default 120)."},
+                },
+                required=["command"],
+            ),
+        ),
+    ),
+    ToolDefinition(
+        function=ToolFunction(
+            name="read",
+            description="Read a file. Optional offset (1-based start line) + limit (number of lines) to read a slice.",
+            parameters=ToolParameter(
+                type="object",
+                properties={
+                    "path": {"type": "string"},
+                    "offset": {"type": "integer"},
+                    "limit": {"type": "integer"},
+                },
+                required=["path"],
+            ),
+        ),
+    ),
+    ToolDefinition(
+        function=ToolFunction(
+            name="write",
+            description="Write content to a file. Creates the file if it doesn't exist, overwrites if it does. "
+                        "Automatically creates parent directories.",
+            parameters=ToolParameter(
+                type="object",
+                properties={
+                    "path": {"type": "string"},
+                    "content": {"type": "string"},
+                },
+                required=["path", "content"],
+            ),
+        ),
+    ),
+    ToolDefinition(
+        function=ToolFunction(
+            name="edit",
+            description="Replace exact old_text with new_text in a file (first match only).",
+            parameters=ToolParameter(
+                type="object",
+                properties={
+                    "path": {"type": "string"},
+                    "old_text": {"type": "string"},
+                    "new_text": {"type": "string"},
+                },
+                required=["path", "old_text", "new_text"],
+            ),
+        ),
+    ),
 ]
 
-ALL_TOOLS = list(_ALL_TOOL_DEFS)  # mutable-safe copy for callers
-ALL_TOOL_NAMES = frozenset(d["function"]["name"] for d in _ALL_TOOL_DEFS)
+ALL_TOOLS = [t.model_dump() for t in _ALL_TOOL_DEFS]  # dicts for API compatibility
+ALL_TOOL_NAMES = frozenset(t.function.name for t in _ALL_TOOL_DEFS)
