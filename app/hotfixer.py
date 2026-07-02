@@ -1,12 +1,6 @@
 """Hotfixer — mini code-fix agent. 4 base tools only, modifies repo source."""
-import json
-import subprocess
-
 from core import config
-from core.log import get_logger
-
-logger = get_logger(__name__)
-from sdk.agent_session import make_on_step
+from sdk.agent_session import run_session
 
 SYSTEM_TEMPLATE = """\
 You are NYX's hotfixer. Fix the following issue by modifying source code in the repo.
@@ -33,30 +27,16 @@ def fix(llm, executor, requirement: str, tid: str = "") -> str:
         requirement=requirement,
     )
 
-    _ver = subprocess.run(
-        ["git", "-C", str(config.REPO), "rev-parse", "--short", "HEAD"],
-        capture_output=True, text=True).stdout.strip()
-    sess_dir = config.TASK_DIR / (tid or "adhoc") / "sessions"
-    from sdk.fs import ensure_dir
-    ensure_dir(sess_dir)
-    sess = sess_dir / f"hotfix-{_ver}.jsonl"
-
     def _record(step, name, args, res_, err, duration):
         return {"type": "tool", "tool": name, "step": step,
                 "args": {k: str(v)[:200] for k, v in (args or {}).items()},
                 "ok": not err, "result": str(res_)[:1000]}
 
-    _on_step = make_on_step("hotfixer", tid, sess=str(sess), record_fn=_record)
-
-    from sdk.agent import run_agent
-    from sdk.tools import ALL_TOOLS
-    res = run_agent(llm,
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": (
-                f"Read the source code in the repo at {config.REPO}/\n"
-                f"Analyze what needs to change, implement it, and describe what you did.")},
-        ],
-        tool_executor=executor, tools=ALL_TOOLS, temperature=0.5, on_step=_on_step)
-
-    return (res.get("content") or "").strip()
+    return run_session(llm, executor,
+                       role="hotfixer", tid=tid,
+                       system_prompt=system_prompt,
+                       user_content=(
+                           f"Read the source code in the repo at {config.REPO}/\n"
+                           f"Analyze what needs to change, implement it, and describe what you did."),
+                       temperature=0.5,
+                       record_fn=_record)

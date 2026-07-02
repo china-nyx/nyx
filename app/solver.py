@@ -2,20 +2,10 @@ from __future__ import annotations
 
 """Solver — attempt-to-solve using tools and skills.
 
-Runs an LLM session. If it modifies repo code, evolver detects dirty → commit + restart.
-Returns dict with content key."""
-
-import json
-import time
-from pathlib import Path
+Runs an LLM session. If it modifies repo code, evolver detects dirty → commit + restart."""
 
 from core import config
-from core.log import get_logger
-
-logger = get_logger(__name__)
-from sdk.agent_session import make_on_step
-
-# Skills: loaded from REPO/skills/ (built-in) and cwd/skills/ (runtime)
+from sdk.agent_session import run_session
 from sdk.skills import scan_skills
 
 
@@ -70,37 +60,11 @@ def _build_system_prompt() -> str:
 
 
 def solve(llm, executor, tools, requirement, skills_doc, tid=""):
-    """Returns dict with content key."""
-    _start_time = time.time()
-
+    """Returns assistant text."""
     prior = (f"--- NYX just restarted after a code upgrade. Your changes are active. ---\nContinue from your note:\n{skills_doc}\n\n" if skills_doc else "")
     skill_index = scan_skills()
     skill_prefix = (skill_index + "\n\n" if skill_index else "")
-    user = (prior + skill_prefix + f"TASK:\n{requirement}")
-
-    # Session log per task, versioned by phase + git commit hash
-    import subprocess as _sub
-    _ver = _sub.run(["git", "-C", str(config.REPO), "rev-parse", "--short", "HEAD"],
-                    capture_output=True, text=True).stdout.strip()
-    sess_dir = config.TASK_DIR / (tid or "adhoc") / "sessions"
-    from sdk.fs import ensure_dir
-    ensure_dir(sess_dir)
-    sess = sess_dir / f"solver-{_ver}.jsonl"
-
-    # Prune old sessions for this task (keep last N)
-    _old = sorted(sess_dir.glob("*.jsonl"),
-                  key=lambda p: p.stat().st_mtime, reverse=True)[config.KEEP_SESSIONS:]
-    for p in _old:
-        p.unlink(missing_ok=True)
-
-    def _sess(rec):
-        rec["ts"] = int(time.time())
-        with open(sess, "a", encoding="utf-8") as f:
-            f.write(json.dumps(rec, ensure_ascii=False) + "\n")
-
-    logger.info(f"[{tid}] solver: cwd={config.HOME}")
-    _sess({"type": "run", "tid": tid, "requirement": requirement[:500],
-           "model": getattr(llm, "model", ""), "cwd": str(config.HOME)})
+    user = prior + skill_prefix + f"TASK:\n{requirement}"
 
     def _record(step, name, args, res_, err, duration):
         return {"type": "tool", "tool": name, "step": step,
@@ -109,23 +73,15 @@ def solve(llm, executor, tools, requirement, skills_doc, tid=""):
                 "ok": (not err), "result": str(res_),
                 "result_brief": _result_brief(res_, err)}
 
-    _on_step = make_on_step("solver", tid, sess=str(sess), record_fn=_record)
+    out = run_session(llm, executor,
+                      role="solver", tid=tid,
+                      system_prompt=_build_system_prompt(),
+                      user_content=user,
+                      tools=tools, temperature=0.7,
+                      record_fn=_record,
+                      prune_sessions=True, log_run=True)
 
-    from sdk.agent import run_agent
+    if not out:
+        raise RuntimeError("Empty response from solver")
 
-    system_prompt = _build_system_prompt()
-    res = run_agent(llm,
-        [{"role": "system", "content": system_prompt},
-         {"role": "user", "content": user}],
-        tool_executor=executor, tools=tools,
-        temperature=0.7,
-        on_step=_on_step,
-    )
-
-    out = res["content"] or ""
-    _sess({"type": "output", "text": out})
-
-    if not out.strip():
-        raise RuntimeError("Empty response from llm.run_agent")
-
-    return out.strip()
+    return out
