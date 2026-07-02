@@ -60,8 +60,9 @@ def fix(llm, executor, requirement: str, tid: str = "") -> dict:
         except Exception:
             pass
 
+    from sdk.agent import run_agent
     from sdk.tools import ALL_TOOLS
-    res = llm.run_agent(
+    res = run_agent(llm,
         messages=[
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": (

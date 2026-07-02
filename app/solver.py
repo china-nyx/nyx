@@ -116,8 +116,10 @@ def solve(llm, executor, tools, requirement, skills_doc, tid=""):
                "ok": (not err), "result": str(res_),
                "result_brief": _result_brief(res_, err)})
 
+    from sdk.agent import run_agent
+
     system_prompt = _build_system_prompt()
-    res = llm.run_agent(
+    res = run_agent(llm,
         [{"role": "system", "content": system_prompt},
          {"role": "user", "content": user}],
         tool_executor=executor, tools=tools,
