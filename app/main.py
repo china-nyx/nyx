@@ -11,7 +11,6 @@ import time
 from pathlib import Path
 
 from app.config import config
-from sdk.fs import ensure_dir
 from sdk.git import Git
 from app.log import get_logger
 
@@ -64,7 +63,7 @@ class Agent:
             return False
         # Dedup: don't create another if one is already pending/running
         for tid, info in scheduler.scan_tasks():
-            src = scheduler._read(tid, "source_file") or ""
+            src = info.get("source_file", "")
             if src == "self-reflect" and info["state"] in ("new", "running"):
                 logger.info(f"[agent] skipping self-reflect — {tid} already active ({info['state']})")
                 return False
@@ -124,8 +123,8 @@ class Agent:
         from app import scheduler
 
         state = info["state"]
-        requirement = self._read_file(tid, "requirement.md") or ""
-        note = self._read_file(tid, "note.md") or ""
+        requirement = scheduler._read(tid, "requirement.md") or ""
+        note = scheduler._read(tid, "note.md") or ""
 
         if state == "new":
             scheduler.set_state(tid, "running")
@@ -149,18 +148,6 @@ class Agent:
         # Save result to task
         scheduler.mark_done(tid, result)
         return "solved"
-
-    # ── File helpers ────────────────────────────────────────────────
-
-    def _read_file(self, tid: str, name: str) -> str:
-        p = config.TASK_DIR / tid / name
-        if not p.exists():
-            return ""
-        return p.read_text(encoding="utf-8").strip()
-
-    def _write_file(self, tid: str, name: str, content: str) -> None:
-        ensure_dir(config.TASK_DIR / tid)
-        (config.TASK_DIR / tid / name).write_text(content, encoding="utf-8")
 
 
 # ── Main entry point ─────────────────────────────────────────────────

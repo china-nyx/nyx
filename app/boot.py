@@ -24,11 +24,10 @@ def main():
 
     g = Git(config.REPO)
 
-    import importlib
-    mod_name, fn_name = config.ENTRY.split(":")
-    logger.info(f"version {g.short()} -> {config.ENTRY}")
+    logger.info(f"version {g.short()}")
+    from app.main import run
     try:
-        getattr(importlib.import_module(mod_name), fn_name)()
+        run()
     except (KeyboardInterrupt, SystemExit):
         # Normal shutdown via SIGTERM/SIGINT — not a crash
         pass

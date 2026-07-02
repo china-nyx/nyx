@@ -221,6 +221,7 @@ def scan_tasks() -> List[Tuple[str, Dict]]:
         tasks.append((tid, {
             "state": state,
             "priority": priority,
+            "source_file": _read(tid, "source_file"),
             "parent_tid": _read(tid, "parent_tid"),
             "pending_upgrade_tid": _read(tid, "pending_upgrade_tid"),
             "resume_target": _read(tid, "resume_target"),
