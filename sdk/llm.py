@@ -3,6 +3,7 @@
 Provides chat() for free-text completion.
 """
 import json
+import logging
 import os
 import re
 import socket
@@ -10,10 +11,7 @@ import time
 import urllib.request
 from typing import Dict, List, Optional
 
-from app.config import config
-from app.log import get_logger
-
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 
 def _strip_think(text: str) -> str:
@@ -63,12 +61,12 @@ def _prune_tool_output(tool_name: str, content: str, max_chars: int = 8000) -> s
 class LLM:
     """HTTP client for OpenAI-compatible LLM API."""
 
-    def __init__(self, url: str = None, model: str = None):
-        base_url = (url or config.LLM_BASE_URL).rstrip("/")
+    def __init__(self, url: str, model: str, api_key: str = "", timeout: int = 300):
+        base_url = url.rstrip("/")
         self.url = base_url + "/chat/completions"
-        self.model = model or config.LLM_MODEL
-        self.api_key = config.LLM_API_KEY
-        self.timeout = config.LLM_TIMEOUT
+        self.model = model
+        self.api_key = api_key
+        self.timeout = timeout
         self._opener = urllib.request.build_opener(urllib.request.ProxyHandler())
 
     def _post(self, body: Dict) -> Dict:

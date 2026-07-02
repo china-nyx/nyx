@@ -1,16 +1,16 @@
 """Agent session helpers — shared on_step factory and session runner."""
 import json
+import logging
 import re
 import time
 from pathlib import Path
 from typing import Callable, Dict, List, Optional
 
 from app.config import config
-from app.log import get_logger
 from sdk.fs import ensure_dir
 from sdk.git import Git
 
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 
 def _tool_brief(name, args, show_full_path=False):
@@ -136,14 +136,14 @@ def run_session(llm, executor, *,
     """
     from sdk.agent import run_agent
 
-    ver = Git(config.REPO).short()
-    sess_dir = config.TASK_DIR / (tid or "adhoc") / "sessions"
+    ver = Git(config.repo).short()
+    sess_dir = config.task_dir / (tid or "adhoc") / "sessions"
     ensure_dir(sess_dir)
     sess_path = str(_session_file(sess_dir, role, ver))
 
     if prune_sessions:
         old = sorted(sess_dir.glob("*.jsonl"),
-                     key=lambda p: p.stat().st_mtime, reverse=True)[config.KEEP_SESSIONS:]
+                     key=lambda p: p.stat().st_mtime, reverse=True)[config.keep_sessions:]
         for p in old:
             p.unlink(missing_ok=True)
 
@@ -154,7 +154,7 @@ def run_session(llm, executor, *,
             "type": "run", "tid": tid,
             "requirement": user_content[:500],
             "model": getattr(llm, "model", ""),
-            "cwd": str(config.HOME),
+            "cwd": str(config.home),
         })
 
     res = run_agent(llm,

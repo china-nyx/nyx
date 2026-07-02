@@ -15,6 +15,7 @@ Done tasks are removed from the active set — scheduler only scans active tids 
 
 Scheduling rules: running tasks first (highest priority), then new tasks.
 """
+import logging
 import os
 import time
 from pathlib import Path
@@ -22,9 +23,8 @@ from typing import Dict, List, Optional, Tuple
 
 from app.config import config
 from sdk.fs import ensure_dir
-from app.log import get_logger
 
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 
 # ── Active task tracking ─────────────────────────────────────────────
@@ -38,7 +38,7 @@ _CURRENT_FILE = "current_tid"   # task/current_tid — tid of the task currently
 
 def _active_tids() -> List[str]:
     """Read the set of active (non-done) task ids."""
-    p = config.TASK_DIR / _ACTIVE_FILE
+    p = config.task_dir / _ACTIVE_FILE
     if not p.exists():
         # First boot with active tracking — migrate from directory scan.
         # Only non-done tasks are added to active.
@@ -50,10 +50,10 @@ def _active_tids() -> List[str]:
 
 def _migrate_to_active() -> None:
     """One-time migration: scan task/ dirs and populate active file with non-done tids."""
-    if not config.TASK_DIR.exists():
+    if not config.task_dir.exists():
         return
     tids = []
-    for d in sorted(config.TASK_DIR.iterdir()):
+    for d in sorted(config.task_dir.iterdir()):
         if not d.is_dir() or d.name == "__pycache__":
             continue
         state_file = d / "state"
@@ -62,9 +62,9 @@ def _migrate_to_active() -> None:
             if state != "done":
                 tids.append(d.name)
     if tids:
-        (config.TASK_DIR / _ACTIVE_FILE).write_text("\n".join(tids) + "\n",
+        (config.task_dir / _ACTIVE_FILE).write_text("\n".join(tids) + "\n",
                                                     encoding="utf-8")
-        logger.info(f"[sched] migrated {len(tids)} active tasks to {config.TASK_DIR / _ACTIVE_FILE}")
+        logger.info(f"[sched] migrated {len(tids)} active tasks to {config.task_dir / _ACTIVE_FILE}")
 
 
 def _add_active(tid: str) -> None:
@@ -72,14 +72,14 @@ def _add_active(tid: str) -> None:
     tids = _active_tids()
     if tid not in tids:
         tids.append(tid)
-        (config.TASK_DIR / _ACTIVE_FILE).write_text("\n".join(tids) + "\n",
+        (config.task_dir / _ACTIVE_FILE).write_text("\n".join(tids) + "\n",
                                                     encoding="utf-8")
 
 
 def _remove_active(tid: str) -> None:
     """Remove a tid from the active set."""
     tids = [t for t in _active_tids() if t != tid]
-    (config.TASK_DIR / _ACTIVE_FILE).write_text("\n".join(tids) + "\n",
+    (config.task_dir / _ACTIVE_FILE).write_text("\n".join(tids) + "\n",
                                                 encoding="utf-8")
 
 
@@ -89,19 +89,19 @@ def _remove_active(tid: str) -> None:
 
 def set_current(tid: str) -> None:
     """Record that tid is the task currently being executed."""
-    (config.TASK_DIR / _CURRENT_FILE).write_text(tid, encoding="utf-8")
+    (config.task_dir / _CURRENT_FILE).write_text(tid, encoding="utf-8")
 
 
 def clear_current() -> None:
     """Clear the current task marker."""
-    p = config.TASK_DIR / _CURRENT_FILE
+    p = config.task_dir / _CURRENT_FILE
     if p.exists():
         p.unlink(missing_ok=True)
 
 
 def current_tid() -> Optional[str]:
     """Return the tid of the task currently being executed, or None."""
-    p = config.TASK_DIR / _CURRENT_FILE
+    p = config.task_dir / _CURRENT_FILE
     if not p.exists():
         return None
     return p.read_text(encoding="utf-8").strip()
@@ -111,7 +111,7 @@ def current_tid() -> Optional[str]:
 
 def _tid_file(tid: str, name: str) -> Path:
     """Path to a task's file."""
-    return config.TASK_DIR / tid / name
+    return config.task_dir / tid / name
 
 
 def _read(tid: str, name: str) -> Optional[str]:
@@ -128,7 +128,7 @@ def _write(tid: str, name: str, content: str) -> None:
 
 
 def _exists(tid: str) -> bool:
-    return (config.TASK_DIR / tid).is_dir()
+    return (config.task_dir / tid).is_dir()
 
 
 # ── Task creation ────────────────────────────────────────────────────
@@ -147,7 +147,7 @@ def create_task(requirement: str, priority: int = 50,
                 source_file: str = "") -> str:
     """Create a new task from a requirement. Returns tid."""
     tid = _next_tid()
-    tdir = config.TASK_DIR / tid
+    tdir = config.task_dir / tid
     ensure_dir(tdir)
 
     _write(tid, "state", "new")
@@ -238,9 +238,9 @@ def pick_next_task() -> Optional[Tuple[str, Dict]]:
 def ingest_inbox() -> List[str]:
     """Move .md files from inbox/ to task/. Returns list of new tids."""
     created = []
-    if not config.INBOX_DIR.exists():
+    if not config.inbox_dir.exists():
         return created
-    for f in sorted(config.INBOX_DIR.glob("*.md")):
+    for f in sorted(config.inbox_dir.glob("*.md")):
         content = f.read_text(encoding="utf-8").strip()
         if not content:
             f.unlink(missing_ok=True)
@@ -265,12 +265,12 @@ def ingest_inbox() -> List[str]:
 
 def _update_index() -> None:
     """Write task/index.md for human reference."""
-    index_path = config.TASK_DIR / "index.md"
+    index_path = config.task_dir / "index.md"
     lines = ["# NYX Task Index\n", "| TID | Priority | State | Source | Summary | Created |\n"]
     lines.append("|-----|----------|-------|--------|---------|----------|\n")
 
-    if config.TASK_DIR.exists():
-        for d in sorted(config.TASK_DIR.iterdir()):
+    if config.task_dir.exists():
+        for d in sorted(config.task_dir.iterdir()):
             if not d.is_dir() or d.name == "__pycache__":
                 continue
             tid = d.name

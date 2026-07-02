@@ -1,54 +1,101 @@
-"""Core config — centralized configuration; everything is env-overridable."""
+"""Core config — all settings in one place.  Pure data, no side-effects on import."""
+import json
 import os
 from pathlib import Path
 
-# REPO is auto-detected from this file's location
-REPO = Path(__file__).resolve().parent.parent
-
-HOME = Path.cwd().resolve()
-if HOME == REPO or str(HOME).startswith(str(REPO) + os.sep):
-    raise RuntimeError(f"Runtime root ({HOME}) must not be inside the source repo ({REPO}).")
-
-# Derived paths
-LOG_DIR = HOME / "log"
-LOG_FILE = LOG_DIR / "nyx.log"
-LOG_KEEP_DAYS = 7  # keep last N days of rotated logs
-INBOX_DIR = HOME / "mailbox" / "inbox"  # only inbox is used; files ingested to task/
-TASK_DIR = HOME / "task"  # task/<tid>/ — per-task persistent state
-SKILLS_DIR = HOME / "skills"
-SANDBOX_DIR = HOME / "sandbox"
-# ── Runtime settings (config/settings.json) ────────────────
-_CONFIG_DIR = HOME / "config"
-_SETTINGS_FILE = _CONFIG_DIR / "settings.json"
-if not _SETTINGS_FILE.exists():
-    raise RuntimeError(
-        f"Missing settings file: {_SETTINGS_FILE}\n"
-        f"See README.md for the required keys."
-    )
-import json as _json
-try:
-    _settings = _json.loads(_SETTINGS_FILE.read_text())
-except Exception as e:
-    raise RuntimeError(f"Invalid settings file {_SETTINGS_FILE}: {e}") from e
-
-# LLM (single endpoint, OpenAI-compatible)
-LLM_BASE_URL = _settings.get("llm", {}).get("base_url", "")
-LLM_MODEL = _settings.get("llm", {}).get("model", "")
-LLM_API_KEY = _settings.get("llm", {}).get("api_key", "")
-if not LLM_BASE_URL or not LLM_MODEL:
-    raise RuntimeError(f"settings.json must have 'llm.base_url' and 'llm.model'")
-LLM_TIMEOUT = int(os.environ.get("NYX_LLM_TIMEOUT") or _settings.get("llm", {}).get("timeout", 300))
+from pydantic import BaseModel, Field, field_validator
 
 
-# Logging
-KEEP_SESSIONS = int(os.environ.get("NYX_KEEP_SESSIONS") or _settings.get("log", {}).get("keep_sessions", 300))
+class Config(BaseModel):
+    """NYX runtime configuration.
 
-# Runtime directories that must exist
-_RUNTIME_DIRS = [INBOX_DIR, TASK_DIR, SKILLS_DIR, SANDBOX_DIR]
+    Created in boot.py from ``config/settings.json``.
+    All app modules read the singleton via ``from app.config import config``.
+    """
+
+    # ── paths ──────────────────────────────────────────────────
+    repo: Path = Field(..., description="Source-code repo (read-only)")
+    home: Path = Field(..., description="Runtime working directory (read-write)")
+
+    # ── LLM ────────────────────────────────────────────────────
+    llm_base_url: str
+    llm_model: str
+    llm_api_key: str = ""
+    llm_timeout: int = 300
+
+    # ── logging ────────────────────────────────────────────────
+    keep_sessions: int = 300
+    log_keep_days: int = 7
+
+    # ── validation ─────────────────────────────────────────────
+    @field_validator("home")
+    @classmethod
+    def _check_home_not_in_repo(cls, v: Path, info):
+        repo = info.data.get("repo")
+        if repo and (v == repo or str(v).startswith(str(repo) + os.sep)):
+            raise ValueError(f"Runtime root ({v}) must not be inside the source repo ({repo})")
+        return v
+
+    # ── derived paths (read-only properties) ───────────────────
+    @property
+    def log_dir(self) -> Path:
+        return self.home / "log"
+
+    @property
+    def log_file(self) -> Path:
+        return self.log_dir / "nyx.log"
+
+    @property
+    def inbox_dir(self) -> Path:
+        return self.home / "mailbox" / "inbox"
+
+    @property
+    def task_dir(self) -> Path:
+        return self.home / "task"
+
+    @property
+    def skills_dir(self) -> Path:
+        return self.home / "skills"
+
+    @property
+    def sandbox_dir(self) -> Path:
+        return self.home / "sandbox"
+
+    @property
+    def runtime_dirs(self) -> list:
+        return [self.inbox_dir, self.task_dir, self.skills_dir, self.sandbox_dir]
+
+    @classmethod
+    def from_settings(cls, *, repo: Path, home: Path):
+        """Build Config from ``config/settings.json``.
+
+        Raises RuntimeError if the file is missing or invalid.
+        """
+        sf = home / "config" / "settings.json"
+        if not sf.exists():
+            raise RuntimeError(
+                f"Missing settings file: {sf}\n"
+                f"See README.md for the required keys."
+            )
+        try:
+            raw = json.loads(sf.read_text(encoding="utf-8"))
+        except Exception as e:
+            raise RuntimeError(f"Invalid settings file {sf}: {e}") from e
+
+        llm = raw.get("llm", {})
+        log_ = raw.get("log", {})
+
+        return cls(
+            repo=repo,
+            home=home,
+            llm_base_url=llm.get("base_url", ""),
+            llm_model=llm.get("model", ""),
+            llm_api_key=llm.get("api_key", ""),
+            llm_timeout=llm.get("timeout", 300),
+            keep_sessions=log_.get("keep_sessions", 300),
+            log_keep_days=log_.get("keep_days", 7),
+        )
 
 
-def ensure_runtime_dirs():
-    """Ensure all runtime directories exist."""
-    from sdk.fs import ensure_dir
-    for _d in _RUNTIME_DIRS:
-        ensure_dir(_d)
+# Singleton — set once by boot.py before any other app module is imported.
+config: Config | None = None

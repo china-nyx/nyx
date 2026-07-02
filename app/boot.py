@@ -3,34 +3,47 @@
 
 If agent fails to start, hotfixer is invoked to fix the code.
 """
+import logging
 import os
 import sys
 from pathlib import Path
 
+# Must set repo in sys.path before importing app modules
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from app.log import get_logger
-logger = get_logger("core.boot")
-
-
-def _write_pid(home: Path) -> None:
-    """Write current process pid to nyx.pid."""
-    (home / "nyx.pid").write_text(str(os.getpid()))
-
 
 def main():
-    from app.config import config
+    repo = ROOT
+    home = Path.cwd().resolve()
+
+    # 1. Create config first (before importing any app module that reads it)
+    import app.config as _cfg_mod
+    from app.config import Config
+
+    config = Config.from_settings(repo=repo, home=home)
+    _cfg_mod.config = config  # set the singleton
+
+    # 2. Ensure runtime dirs exist
+    from sdk.fs import ensure_dir
+    for d in config.runtime_dirs:
+        ensure_dir(d)
+    config.log_dir.mkdir(parents=True, exist_ok=True)
+
+    # 3. Setup logging
+    from app.log import setup_logging
     from sdk.git import Git
 
-    # Ensure cwd is the runtime root so all derived paths resolve correctly
-    config.ensure_runtime_dirs()
-    os.chdir(str(config.HOME))
+    os.chdir(str(config.home))
+    setup_logging(log_file=config.log_file, keep_days=config.log_keep_days,
+                  repo_path=config.repo)
 
-    g = Git(config.REPO)
-    _write_pid(config.HOME)
+    logger = logging.getLogger("core.boot")
+    (config.home / "nyx.pid").write_text(str(os.getpid()))
 
+    g = Git(config.repo)
     logger.info(f"version {g.short()} (pid {os.getpid()})")
+
     from app.main import run
     try:
         run()

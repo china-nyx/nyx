@@ -48,15 +48,15 @@ Return a clear summary of what you did and the result."""
 
 def _build_system_prompt() -> str:
     return SYSTEM_TEMPLATE.format(
-        repo=str(config.REPO),
-        sandbox=str(config.SANDBOX_DIR),
-        cwd=str(config.HOME),
+        repo=str(config.repo),
+        sandbox=str(config.sandbox_dir),
+        cwd=str(config.home),
     )
 
 
 def solve(llm, executor, tools, requirement, tid=""):
     """Returns assistant text."""
-    skill_index = scan_skills()
+    skill_index = scan_skills(config.repo / "skills", config.skills_dir)
     skill_prefix = (skill_index + "\n\n" if skill_index else "")
     user = skill_prefix + f"TASK:\n{requirement}"
 

@@ -1,7 +1,8 @@
 """Self-heal — recover from crashes by fixing the code."""
+import logging
 import traceback as _tb
-from app.log import get_logger
-logger = get_logger(__name__)
+
+logger = logging.getLogger(__name__)
 
 
 def run(exc: Exception) -> None:
@@ -16,8 +17,9 @@ def run(exc: Exception) -> None:
         f"### Traceback\n```\n{_tb.format_exception(exc)}\n```\n\n"
         "Find and fix the root cause so NYX can start cleanly."
     )
-    llm = LLM()
-    tools = Tools(cwd=config.HOME)
+    llm = LLM(url=config.llm_base_url, model=config.llm_model,
+                api_key=config.llm_api_key, timeout=config.llm_timeout)
+    tools = Tools(cwd=config.home)
     try:
         evolver.evolve(lambda: hotfixer.fix(llm, tools.execute, requirement))
     except Exception:

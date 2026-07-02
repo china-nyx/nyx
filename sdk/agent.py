@@ -6,11 +6,10 @@ is handled inline via sdk.compaction.
 """
 import hashlib
 import json
+import logging
 import time
 from collections import deque
 from typing import Callable, Dict, List, Optional, Set
-
-from app.log import get_logger
 
 from sdk.compaction import (
     clamp_max_tokens,
@@ -24,7 +23,7 @@ from sdk.compaction import (
 from sdk.llm import _prune_tool_output, _strip_think
 from sdk.tools import ALL_TOOLS
 
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 # ── Repetitive call guard config ────────────────────────────────────
 _REPEAT_THRESHOLD = 3       # N consecutive identical calls triggers the guard

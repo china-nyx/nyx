@@ -4,5 +4,7 @@ version = "0.0.1"
 description = "NYX — a self-evolving autonomous agent"
 readme = "README.md"
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    "pydantic>=2.13.4",
+]
 

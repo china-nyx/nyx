@@ -1,64 +1,60 @@
-"""Centralized logging — first get_logger() call lazily sets up handlers."""
+"""Centralized logging setup — configure once at boot, then use standard logging everywhere."""
 import logging
 import sys
+from logging.handlers import TimedRotatingFileHandler
+
+from sdk.git import Git
 
 
-_root = logging.getLogger("nyx")
-_root.setLevel(logging.INFO)
-_root.propagate = False
+class _VersionFilter(logging.Filter):
+    def __init__(self, repo_path):
+        super().__init__()
+        self._repo_path = repo_path
+        self._version = None
 
-_fmt = logging.Formatter(
-    "%(asctime)s [%(levelname)s] [%(_version)s] [%(name)s] %(message)s",
-    datefmt="%Y-%m-%d %H:%M:%S",
-)
+    def filter(self, record):
+        if self._version is None:
+            try:
+                self._version = Git(self._repo_path).short()
+            except Exception:
+                self._version = "???"
+        record._version = self._version
+        return True
 
-_initialized = False
 
+def setup_logging(*, log_file, keep_days, repo_path):
+    """Configure root logger with file + console handlers and version filter.
 
-def _init():
-    """Lazy init — runs once on first get_logger call."""
-    global _initialized
-    if _initialized:
-        return
-    from app.config import config
+    Call once at application startup (boot.py).
+    All modules then use ``logging.getLogger(__name__)`` normally.
+    """
+    fmt = logging.Formatter(
+        "%(asctime)s [%(levelname)s] %(_version)s [%(name)s] %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+    )
+
+    root = logging.getLogger()
+    root.setLevel(logging.INFO)
+
+    # Remove existing handlers to avoid duplicates on re-import/reload
+    for h in list(root.handlers):
+        root.removeHandler(h)
+
+    vf = _VersionFilter(repo_path)
+
     from sdk.fs import ensure_dir
-    from logging.handlers import TimedRotatingFileHandler
+    from pathlib import Path
+    ensure_dir(Path(log_file).parent)
 
-    vf = logging.Filter(_version_filter)
-    ensure_dir(config.LOG_DIR)
-    fh = TimedRotatingFileHandler(config.LOG_FILE, when="midnight", interval=1,
-                                  backupCount=config.LOG_KEEP_DAYS, encoding="utf-8")
-    fh.setFormatter(_fmt)
+    fh = TimedRotatingFileHandler(
+        log_file, when="midnight", interval=1,
+        backupCount=keep_days, encoding="utf-8"
+    )
+    fh.setFormatter(fmt)
     fh.addFilter(vf)
-    _root.addHandler(fh)
+    root.addHandler(fh)
 
     sh = logging.StreamHandler(sys.stderr)
-    sh.setFormatter(_fmt)
+    sh.setFormatter(fmt)
     sh.addFilter(vf)
-    _root.addHandler(sh)
-    _initialized = True
-
-
-def _version_filter(record):
-    """Lazy version filter — defers git call until first log."""
-    try:
-        from sdk.git import Git
-        from app.config import config
-        record._version = Git(config.REPO).short()
-    except Exception:
-        record._version = "???"
-    return True
-
-
-def get_logger(name: str) -> logging.Logger:
-    """Return a logger with the given module name.
-
-    Usage in each module: ``logger = get_logger(__name__)``
-    First call lazily sets up file + console handlers."""
-    _init()
-    child = logging.getLogger(name)
-    child.setLevel(_root.level)
-    for h in _root.handlers:
-        if h not in child.handlers:
-            child.addHandler(h)
-    return child
+    root.addHandler(sh)

@@ -5,6 +5,7 @@ The scheduler picks the next task, agent executes it via evolver.evolve(solver.s
 
     inbox/*.md → scheduler creates task/ → agent picks → evolve(solver) → auto-commit+restart if dirty
 """
+import logging
 import os
 import signal
 import time
@@ -12,13 +13,12 @@ from pathlib import Path
 
 from app.config import config
 from sdk.git import Git
-from app.log import get_logger
-
-logger = get_logger(__name__)
 from sdk.llm import LLM
 from sdk.tools import ALL_TOOLS, Tools
 from app import solver
 from app import evolver
+
+logger = logging.getLogger(__name__)
 
 _running = True
 
@@ -36,8 +36,13 @@ def _sig(signum, frame):
 
 class Agent:
     def __init__(self, llm: LLM = None):
-        self.llm = llm or LLM()
-        self.ftools = Tools(cwd=config.HOME)
+        self.llm = llm or LLM(
+            url=config.llm_base_url,
+            model=config.llm_model,
+            api_key=config.llm_api_key,
+            timeout=config.llm_timeout,
+        )
+        self.ftools = Tools(cwd=config.home)
         self._last_try = {}  # tid -> last tick timestamp
         self.REQ_RETRY_SEC = int(os.environ.get("NYX_REQ_RETRY_SEC", "25"))
         self._last_self_reflect = 0.0
@@ -65,15 +70,15 @@ class Agent:
                 return False
         self._last_self_reflect = now
         # Single source of truth: runtime SKILL.md overrides built-in (standard skill override)
-        skill_file = config.SKILLS_DIR / "self-reflect" / "SKILL.md"
+        skill_file = config.skills_dir / "self-reflect" / "SKILL.md"
         if not skill_file.exists():
-            skill_file = config.REPO / "skills" / "self-reflect" / "SKILL.md"
+            skill_file = config.repo / "skills" / "self-reflect" / "SKILL.md"
         if not skill_file.exists():
             logger.warning("[agent] self-reflect SKILL.md not found — skipping")
             return False
         requirement = skill_file.read_text(encoding='utf-8')
         stamp = time.strftime("%Y-%m-%d-%H", time.localtime())
-        inbox_file = config.INBOX_DIR / f"10-self-reflect-{stamp}.md"
+        inbox_file = config.inbox_dir / f"10-self-reflect-{stamp}.md"
         inbox_file.write_text(requirement, encoding="utf-8")
         logger.info(f"[agent] dropped self-reflect inbox file {inbox_file.name}")
 
@@ -141,10 +146,10 @@ def run():
     signal.signal(signal.SIGTERM, _sig)
     signal.signal(signal.SIGINT, _sig)
 
-    git = Git(config.REPO)
+    git = Git(config.repo)
     logger.info(f"NYX up (pid {os.getpid()}, version {git.short()})")
 
-    agent = Agent(llm=LLM())
+    agent = Agent()
 
     while _running:
         try:

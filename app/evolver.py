@@ -1,13 +1,13 @@
 """Evolver — run an agent session, then commit + restart if repo changed."""
+import logging
 import os
 import sys
 from pathlib import Path
 
 from app.config import config
 from sdk.git import Git
-from app.log import get_logger
 
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 
 def _re_exec(tid: str = None, result: str = None):
@@ -19,14 +19,14 @@ def _re_exec(tid: str = None, result: str = None):
         scheduler.mark_done(tid, result or "")
         logger.info(f"[evolver] marked {tid} done before restart")
 
-    boot_py = config.REPO / "app" / "boot.py"
+    boot_py = config.repo / "app" / "boot.py"
     logger.info("[evolver] re-execing NYX...")
     os.execv(sys.executable, [sys.executable, str(boot_py)])
 
 
 def evolve(agent_fn, tid: str = None):
     """Run an agent callable. If the repo changed (committed or dirty), commit + restart."""
-    g = Git(config.REPO)
+    g = Git(config.repo)
 
     # Record HEAD before the session
     pre_head = g.short()

@@ -3,8 +3,6 @@ import os
 from pathlib import Path
 from typing import List, Tuple
 
-from app.config import config
-
 
 def _parse_frontmatter(text: str) -> dict:
     """Parse YAML frontmatter between --- delimiters using simple line-based parsing."""
@@ -45,19 +43,16 @@ def _find_skill_dirs(base_dir: Path) -> List[Path]:
     return sorted(results)
 
 
-def scan_skills() -> str:
+def scan_skills(builtin_dir: Path, runtime_dir: Path) -> str:
     """Scan skills directories for SKILL.md files. Returns XML block or empty string.
 
     Scans two directories recursively:
-      1. REPO/skills/ (built-in, from source repo)
-      2. config.SKILLS_DIR (cwd/skills/, runtime — overrides built-in by name)
+      1. builtin_dir (built-in, from source repo)
+      2. runtime_dir (cwd/skills/, runtime — overrides built-in by name)
 
     Deduplicates by skill name, with runtime dir taking priority."""
     skill_blocks = []
     seen_names = set()
-
-    builtin_dir = config.REPO / "skills"
-    runtime_dir = config.SKILLS_DIR
 
     # Scan built-in first, then runtime (runtime overwrites same-name entries)
     for skills_dir in [builtin_dir, runtime_dir]:
