@@ -1,13 +1,12 @@
 """Hotfixer — mini code-fix agent. 4 base tools only, modifies repo source."""
 import json
 import subprocess
-import time
 
 from core import config
 from core.log import get_logger
 
 logger = get_logger(__name__)
-from sdk.tools import format_tool_log
+from sdk.agent_session import make_on_step
 
 SYSTEM_TEMPLATE = """\
 You are NYX's hotfixer. Fix the following issue by modifying source code in the repo.
@@ -42,23 +41,12 @@ def fix(llm, executor, requirement: str, tid: str = "") -> str:
     ensure_dir(sess_dir)
     sess = sess_dir / f"hotfix-{_ver}.jsonl"
 
-    _step_num = 0
-    _last_step_time = time.time()
+    def _record(step, name, args, res_, err, duration):
+        return {"type": "tool", "tool": name, "step": step,
+                "args": {k: str(v)[:200] for k, v in (args or {}).items()},
+                "ok": not err, "result": str(res_)[:1000]}
 
-    def _on_step(name, args, res_, err):
-        nonlocal _step_num, _last_step_time
-        _step_num += 1
-        duration = round(time.time() - _last_step_time, 1)
-        _last_step_time = time.time()
-        logger.info(format_tool_log("hotfixer", tid, _step_num, name, args, res_, err, duration))
-        try:
-            rec = {"type": "tool", "tool": name, "step": _step_num,
-                   "args": {k: str(v)[:200] for k, v in (args or {}).items()},
-                   "ok": not err, "result": str(res_)[:1000]}
-            with open(sess, "a", encoding="utf-8") as f:
-                f.write(json.dumps(rec, ensure_ascii=False) + "\n")
-        except Exception:
-            pass
+    _on_step = make_on_step("hotfixer", tid, sess=str(sess), record_fn=_record)
 
     from sdk.agent import run_agent
     from sdk.tools import ALL_TOOLS

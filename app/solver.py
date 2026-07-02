@@ -13,7 +13,7 @@ from core import config
 from core.log import get_logger
 
 logger = get_logger(__name__)
-from sdk.tools import format_tool_log
+from sdk.agent_session import make_on_step
 
 # Skills: loaded from REPO/skills/ (built-in) and cwd/skills/ (runtime)
 from sdk.skills import scan_skills
@@ -101,20 +101,15 @@ def solve(llm, executor, tools, requirement, skills_doc, tid=""):
     logger.info(f"[{tid}] solver: cwd={config.HOME}")
     _sess({"type": "run", "tid": tid, "requirement": requirement[:500],
            "model": getattr(llm, "model", ""), "cwd": str(config.HOME)})
-    _step_num = 0
-    _last_step_time = time.time()
 
-    def _on_step(name, args, res_, err):
-        nonlocal _step_num, _last_step_time
-        _step_num += 1
-        duration = round(time.time() - _last_step_time, 1)
-        _last_step_time = time.time()
-        logger.info(format_tool_log("solver", tid, _step_num, name, args, res_, err, duration))
-        _sess({"type": "tool", "tool": name, "step": _step_num,
-               "duration": duration,
-               "args": args or {},
-               "ok": (not err), "result": str(res_),
-               "result_brief": _result_brief(res_, err)})
+    def _record(step, name, args, res_, err, duration):
+        return {"type": "tool", "tool": name, "step": step,
+                "duration": duration,
+                "args": args or {},
+                "ok": (not err), "result": str(res_),
+                "result_brief": _result_brief(res_, err)}
+
+    _on_step = make_on_step("solver", tid, sess=str(sess), record_fn=_record)
 
     from sdk.agent import run_agent
 
