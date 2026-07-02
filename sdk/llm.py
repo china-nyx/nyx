@@ -146,32 +146,28 @@ def _extract_business_schema(response_format: Optional[Dict]) -> Optional[Dict]:
 def _parse_merged_response(raw_text: str) -> ChatCompletionResponse:
     """Parse JSON text from merged-schema mode into ChatCompletionResponse.
 
-    Merged schema is flat: {thought, actions, <business fields>}.
+    Merged schema: {thought, actions, <business fields>}.
     - actions non-empty → tool_calls (model needs to call tools)
     - actions empty / missing → final result (business fields are the answer)
     """
+    import time
+    # OpenAI-compatible ID: chatcmpl-<timestamp>-<random>
+    import uuid
+    req_id = f"chatcmpl-{int(time.time() * 1000)}-{uuid.uuid4().hex[:8]}"
+
     try:
         parsed = json.loads(raw_text)
     except json.JSONDecodeError:
-        return ChatCompletionResponse(
-            id="merged-fallback", object="chat.completion", model="merged",
-            created=0,
-            choices=[ChatChoice(
-                index=0,
-                message=ChatResponseMessage(role="assistant", content=raw_text),
-                finish_reason="stop",
-            )],
-            usage=Usage(completion_tokens=0, prompt_tokens=0, total_tokens=0),
-        )
+        # Invalid JSON — raise to trigger retry
+        raise ValueError(f"Invalid JSON in merged-schema response: {raw_text[:200]}")
 
     actions = parsed.get("actions") or []
-
     if actions:
         # Model wants to call tools
         tool_calls = []
         for i, action in enumerate(actions):
             tool_calls.append({
-                "id": f"call_{i}",
+                "id": f"call_{req_id[-6:]}_{i}",
                 "type": "function",
                 "function": {
                     "name": action["tool_name"],
@@ -180,8 +176,8 @@ def _parse_merged_response(raw_text: str) -> ChatCompletionResponse:
             })
         content = parsed.get("thought", "")
         return ChatCompletionResponse(
-            id="merged-tool-calls", object="chat.completion", model="merged",
-            created=0,
+            id=req_id, object="chat.completion", model="merged",
+            created=int(time.time()),
             choices=[ChatChoice(
                 index=0,
                 message=ChatResponseMessage(
@@ -207,8 +203,8 @@ def _parse_merged_response(raw_text: str) -> ChatCompletionResponse:
         content = json.dumps(business) if business else parsed.get("thought", "")
 
     return ChatCompletionResponse(
-        id="merged-result", object="chat.completion", model="merged",
-        created=0,
+        id=req_id, object="chat.completion", model="merged",
+        created=int(time.time()),
         choices=[ChatChoice(
             index=0,
             message=ChatResponseMessage(
