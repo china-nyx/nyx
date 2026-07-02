@@ -1,13 +1,12 @@
 """Agent — the app's main entry point.
 
 OS process model: each requirement is a task with its own persistent directory.
-The scheduler picks the next task, agent executes it (solver → evolver if needed).
+The scheduler picks the next task, agent executes it via evolver.evolve(solver.solve).
 
-    inbox/*.md → scheduler creates task/ → agent picks → solver → evolver (if needs_upgrade)
+    inbox/*.md → scheduler creates task/ → agent picks → evolve(solver) → auto-commit+restart if dirty
 """
 import os
 import signal
-import sys
 import time
 from pathlib import Path
 
@@ -120,88 +119,35 @@ class Agent:
     # ── Task execution ──────────────────────────────────────────────
 
     def _execute_task(self, tid: str, info: dict) -> str:
-        """Execute a task: run solver for new/resumed tasks, resume editor after upgrade."""
+        """Execute a task via evolver.evolve(solver.solve)."""
+        from app import scheduler
 
         state = info["state"]
         requirement = self._read_file(tid, "requirement.md") or ""
         note = self._read_file(tid, "note.md") or ""
 
         if state == "new":
-            # New task — go straight to solver; it will use needs_upgrade if code changes are required
-            from app import scheduler
             scheduler.set_state(tid, "running")
-            return self._run_solver(tid, requirement, "")
+            return self._run_task(tid, requirement, "")
 
         elif state == "running":
-            resume_target = info.get("resume_target")
-            if resume_target == "editor":
-                # Resume editor phase after upgrade
-                return self._run_editor_resume(tid, requirement, note)
-            else:
-                # Normal solver execution (new task or resumed from upgrade)
-                return self._run_solver(tid, requirement, note)
+            return self._run_task(tid, requirement, note)
 
         return f"unknown state {state}"
 
-    def _run_solver(self, tid: str, requirement: str, note: str) -> str:
-        """Run solver session for a task."""
+    def _run_task(self, tid: str, requirement: str, note: str) -> str:
+        """Run a task via evolver.evolve. If repo changes, auto-commit + restart."""
         from app import scheduler
 
-        r = solver.solve(self.llm, self._executor, ALL_TOOLS, requirement, note, tid=tid)
+        result = evolver.evolve(
+            lambda: solver.solve(self.llm, self._executor, ALL_TOOLS, requirement, note, tid=tid))
 
-        if not r.get("result"):
+        if not result:
             return "no result yet; will retry"
 
-        status = r.get("status", "done")
-
-        if status == "needs_upgrade":
-            # Solver needs code changes → enter upgrade flow
-            return self._run_upgrade(tid, r.get("content", ""))
-
-        # Done — save content to result.md
-        scheduler.mark_done(tid, r.get("content", ""))
+        # Save result to task
+        scheduler.mark_done(tid, result)
         return "solved"
-
-    def _run_upgrade(self, tid: str, content: str) -> str:
-        """Enter upgrade flow: mark task as waiting, run evolver.
-
-        content is both: this task's note for resume, and the child task's requirement.
-        Child's result will be written back to parent note on completion."""
-        from app import scheduler, evolver
-
-        # content is this task's note for resume
-        self._write_file(tid, "note.md", f"# WAITING FOR UPGRADE\n{content}")
-
-        # Create child upgrade task
-        child_tid = scheduler.create_task(
-            requirement=content,
-            priority=99,
-            parent_tid=tid,
-            source_file=tid,  # index.md shows parent TID as source
-        )
-        # Mark child as an upgrade task (editor phase)
-        scheduler._write(child_tid, "resume_target", "editor")
-
-        # Mark parent as waiting
-        scheduler.set_upgrade_waiting(tid, child_tid, "solver")
-
-        # Run evolver for the child task — it promotes and restarts (never returns on success)
-        evolver.run(
-            self.llm, self._executor,
-            requirement=content, tid=child_tid,
-        )
-        # Evolver returned normally (clean worktree, no restart needed)
-        return "upgrade complete (no code changes, no restart)"
-
-    def _run_editor_resume(self, tid: str, requirement: str, note: str) -> str:
-        """Resume editor after a sub-upgrade completed."""
-        from app import scheduler, evolver
-
-        logger.info(f"[{tid}] resuming editor after upgrade")
-        evolver.run(
-            self.llm, self._executor,
-            requirement=requirement, tid=tid,
-        )
 
     # ── File helpers ────────────────────────────────────────────────
 
