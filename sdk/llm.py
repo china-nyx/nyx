@@ -88,10 +88,10 @@ def _build_schema(tools: List[Dict], business_schema: Optional[Dict] = None) -> 
         tool_items.append({
             "type": "object",
             "properties": {
-                "tool_name": {"type": "string", "enum": [fn["name"]]},
-                "tool_arguments": params,
+                "name": {"type": "string", "enum": [fn["name"]]},
+                "args": params,
             },
-            "required": ["tool_name", "tool_arguments"],
+            "required": ["name", "args"],
             "additionalProperties": False,
         })
 
@@ -130,17 +130,9 @@ def _build_schema(tools: List[Dict], business_schema: Optional[Dict] = None) -> 
     }
 
 
-def _extract_schema(response_format: Optional[Dict]) -> Optional[Dict]:
-    """Extract inner schema dict from a response_format payload."""
-    if not isinstance(response_format, dict):
-        return None
-    if "json_schema" in response_format:
-        inner = response_format["json_schema"]
-        return inner.get("schema") if isinstance(inner, dict) else None
-    if "schema" in response_format:
-        rf_schema = response_format["schema"]
-        return rf_schema if isinstance(rf_schema, dict) else None
-    return None
+def _extract_schema(response_format: Dict) -> Dict:
+    """Extract inner schema dict from response_format (always json_schema)."""
+    return response_format["json_schema"]["schema"]
 
 
 def _parse_response(raw_text: str) -> ChatCompletionResponse:
@@ -170,8 +162,8 @@ def _parse_response(raw_text: str) -> ChatCompletionResponse:
                 "id": f"call_{req_id[-6:]}_{i}",
                 "type": "function",
                 "function": {
-                    "name": action["tool_name"],
-                    "arguments": json.dumps(action.get("tool_arguments", {}))
+                    "name": action["name"],
+                    "arguments": json.dumps(action.get("args", {}))
                 }
             })
         content = parsed.get("thought", "")
