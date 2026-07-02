@@ -1,12 +1,8 @@
 from __future__ import annotations
 
-"""Solver — a standalone "attempt-to-solve" block.
+"""Solver — attempt-to-solve using tools and skills.
 
-It does exactly one thing: try to solve a requirement using existing tools/skills and **return the real result**.
-The owner sees the real result and judges correctness. If the task involves changing NYX's own code,
-the solver returns status='needs_upgrade' — the evolver handles the rest.
-
-Code is read directly from the source repo (bind-mounted read-only at boot).
+Returns status='done' or 'needs_upgrade'. If needs_upgrade, agent calls hotfixer to fix the code.
 """
 
 import json
@@ -22,7 +18,6 @@ logger = get_logger(__name__)
 from sdk.tools import format_tool_log
 
 # Skills: loaded from REPO/skills/ (built-in) and cwd/skills/ (runtime)
-# Runtime skills override built-in ones by name.
 config.SKILLS_DIR.mkdir(parents=True, exist_ok=True)
 
 from sdk.skills import scan_skills
@@ -33,39 +28,6 @@ def _result_brief(res, err):
     head = s[:160] + ("\u2026" if len(s) > 160 else "")
     return ("ERR: " if err else "") + head
 
-
-# ── JSON schema for structured response ──────────────────────────────
-# NOTE: NOT passed to llm.run_agent() as response_format.
-# The model being used does not support tools + response_format simultaneously
-# (it drops tool calls and only returns JSON). We rely on prompt engineering instead.
-
-SOLVER_RESPONSE_SCHEMA = {
-    "type": "json_schema",
-    "json_schema": {
-        "name": "solver_response",
-        "schema": {
-            "type": "object",
-            "properties": {
-                "status": {
-                    "type": "string",
-                    "enum": ["done", "needs_upgrade"],
-                    "description": (
-                        "'done' if the task is fully complete. "
-                        "'needs_upgrade' if NYX's own code must be changed to continue.")
-                },
-                "content": {
-                    "type": "string",
-                    "description": (
-                        "If done: the full result text for the owner. "
-                        "If needs_upgrade: detailed description of what capability is missing and why it is needed (this will be passed to the evolver).")
-                }
-            },
-            "required": ["status", "content"],
-            "additionalProperties": False
-        },
-        "strict": True
-    }
-}
 
 SYSTEM_TEMPLATE = """\
 You ARE NYX — a self-evolving agent. Solve tasks by actually executing work with your tools.
@@ -86,36 +48,29 @@ You ARE NYX — a self-evolving agent. Solve tasks by actually executing work wi
 - In-memory state is lost on restart — persist important state to disk
 
 ## Paths
-Your current working directory is: {cwd}
+Your working directory: {cwd}
+Repo: {repo}
 
 Everything under {cwd} is YOUR runtime workspace (read-write). Key subdirectories:
-  - {source_code}/ → symlink to source repo (read-only, do NOT write here)
   - {sandbox}/ → your workspace for projects, research, data, and persistent notes
   - skills/ → runtime skills (override built-in by name)
     Built-in skills are loaded from the source repo at runtime.
     Instance-specific skills go here and shadow built-in ones of the same name.
   - task/ → task state (note.md, result.md, sessions/)
   - mailbox/inbox/ → incoming requirements (scheduler consumes these)
-    Naming convention: `<priority>-<description>.md` — the scheduler parses priority from the filename prefix.
 
-Source code is at {source_code}/ (bind-mounted read-only).
-To modify NYX's own code, return status="needs_upgrade" — do NOT write to {source_code}/.
+Source code is in {repo}/ (read-write). You can modify it directly — if you do, NYX will restart with your changes.
 
 ## When to return needs_upgrade
-You MUST return status="needs_upgrade" (NOT "done") when any of the following apply:
-  - You need to change NYX's own source code to complete the task
+Return status="needs_upgrade" when:
+  - You need the hotfixer to make complex code changes (multi-file refactors, architectural changes)
   - A required tool or capability is missing and must be added to NYX
   - Your research reveals that NYX should be improved or upgraded
-  - The task explicitly asks you to study something and evolve NYX based on findings
-  - You hit a read-only filesystem error when trying to modify source code
 
 When returning needs_upgrade, the content field must describe:
   - What capability is missing or what code needs to change
   - Why this change is necessary
   - Which files are involved and what kind of changes are needed
-
-Do NOT return "done" just because you wrote an analysis report. If the task
-requires changing NYX's own code, return "needs_upgrade" so the evolver can apply it.
 
 ## Response Format — CRITICAL
 Your FINAL response (after all tool calls) MUST be a valid JSON object with exactly
@@ -140,11 +95,11 @@ or:
 - Do NOT include any other JSON objects in your final response that could confuse parsing"""
 
 
-def _build_system_prompt(home: Path, source_code: Path, sandbox: Path) -> str:
+def _build_system_prompt() -> str:
     return SYSTEM_TEMPLATE.format(
-        source_code=str(source_code),
-        sandbox=str(sandbox),
-        cwd=str(home),
+        repo=str(config.REPO),
+        sandbox=str(config.SANDBOX_DIR),
+        cwd=str(config.HOME),
     )
 
 
@@ -231,7 +186,7 @@ def solve(llm, executor, tools, requirement, skills_doc, tid=""):
                "ok": (not err), "result": str(res_),
                "result_brief": _result_brief(res_, err)})
 
-    system_prompt = _build_system_prompt(config.HOME, config.SRC_LINK, config.SANDBOX_DIR)
+    system_prompt = _build_system_prompt()
     res = llm.run_agent(
         [{"role": "system", "content": system_prompt},
          {"role": "user", "content": user}],
