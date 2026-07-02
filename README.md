@@ -8,19 +8,20 @@ projects, without a human in the loop.
 ## How it works
 
 ```
-requirement ─▶ solver (tries with current tools + skills)
-                 ├─ solved  ─▶ done
-                 └─ needs_upgrade ─▶ evolver: editor edits worktree → promote → restart
+requirement ─▶ evolve(solver) ─▶ solves task, modifies repo if needed
+                     │
+                     ├─ no code changes  ─▶ done
+                     └─ code changes     ─▶ commit → restart
 
-crash ─▶ boot catches exception → evolver (editor → promote → restart)
+crash ─▶ boot catches exception ─▶ evolve(hotfixer) → fix code → restart
 ```
 
 - **Solver** attempts the task with 4 base tools (`bash`, `read`, `write`, `edit`) and
-  skills loaded from `skills/` (under cwd). Returns structured JSON: `done` or `needs_upgrade`.
-- **Editor** is the stable core — an LLM agent session in a throwaway git worktree.
-  It reads requirements, studies source code, and implements changes. Only depends on core/ + sdk/.
-- **Evolver** orchestrates the editor: creates a worktree, runs the editor, promotes changes to main, restarts.
-- **Boot** starts the agent. If anything fails (import error, crash), boot invokes evolver to fix the code.
+  skills loaded from `skills/` (under cwd). Can modify repo source directly.
+- **Hotfixer** is a mini code-fix agent — 4 tools only, modifies repo source.
+  Used by boot self-heal for crash recovery.
+- **Evolver** wraps any agent session: records git HEAD before/after, commits + restarts if code changed.
+- **Boot** starts the agent. If anything fails (import error, crash), boot invokes hotfixer to fix the code.
 
 ## Architecture
 
@@ -28,7 +29,7 @@ crash ─▶ boot catches exception → evolver (editor → promote → restart)
 
 ```
 core/       — boot, git, config, log
-app/        — agent, editor, evolver, solver, scheduler
+app/        — agent, evolver, hotfixer, solver, scheduler
 sdk/        — tools.py (4 base tools), llm.py, atomic_io, exceptions
 skills/     — built-in skills (loaded at runtime from source repo)
 ```
@@ -43,9 +44,7 @@ task/       — per-task persistent state (scheduler managed)
               └── <tid>/            state, priority, requirement.md, note.md, result.md
 skills/     — runtime skills (override built-in by name)
 mailbox/    — inbox/ only (requirements ingested to task/, files deleted after ingestion)
-worktree/   — temporary git worktrees (created on-demand by evolver, deleted after promote)
 sandbox/    — your work area (projects, research, data — put everything here)
-├── src → CODE              symlink to source repo (bind-mounted read-only)
 ```
 
 ### OS Process Model
@@ -53,10 +52,9 @@ sandbox/    — your work area (projects, research, data — put everything here
 NYX manages requirements as tasks with an OS-like scheduler:
 
 - Each requirement becomes a **task** with its own directory (`task/<tid>/`)
-- Tasks have states: `new` → `running` → `done`, or `running` → `upgrade-waiting` → `running`
-- The scheduler picks the next task by priority (99 = upgrade preemption)
-- When a task needs code changes, it spawns a child upgrade task (priority 99) and waits
-- After restart, child tasks resume first, then parents
+- Tasks have states: `new` → `running` → `done`
+- The scheduler picks the next task by priority
+- All agent sessions run through `evolver.evolve()` — if repo code changes, auto-commit + restart
 
 ### Skills
 
@@ -82,9 +80,8 @@ To customize what self-reflect audits, place your own SKILL.md at `skills/self-r
 
 ## Safety model
 
-- The evolver FSM controls all code changes — the LLM cannot bypass the promote gate.
-- Source repo is bind-mounted read-only at boot, preventing accidental writes by the solver.
-- **Self-heal**: if NYX crashes at any point, boot catches the exception and invokes the editor to fix the code.
+- Evolver controls all code changes — detects repo changes after agent sessions, commits + restarts.
+- **Self-heal**: if NYX crashes at any point, boot catches the exception and invokes the hotfixer to fix the code.
 
 ## Running it
 
