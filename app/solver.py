@@ -2,14 +2,12 @@ from __future__ import annotations
 
 """Solver — attempt-to-solve using tools and skills.
 
-Returns status='done' or 'needs_upgrade'. If needs_upgrade, agent calls hotfixer to fix the code.
-"""
+Runs an LLM session. If it modifies repo code, evolver detects dirty → commit + restart.
+Returns dict with content key."""
 
 import json
-import re
 import time
 from pathlib import Path
-from typing import Dict, Optional
 
 from core import config
 from core.log import get_logger
@@ -38,7 +36,6 @@ You ARE NYX — a self-evolving agent. Solve tasks by actually executing work wi
 
 ## Skills
 - You have skills that provide specialized workflows for common tasks.
-- Skills follow the Agent Skills standard: https://agentskills.io/specification.md
 - The task below includes a <skills> block listing available skills with descriptions.
 - When a skill's description matches your current task or situation:
   1. Use `read` to load the full SKILL.md at the path shown
@@ -59,40 +56,11 @@ Everything under {cwd} is YOUR runtime workspace (read-write). Key subdirectorie
   - task/ → task state (note.md, result.md, sessions/)
   - mailbox/inbox/ → incoming requirements (scheduler consumes these)
 
-Source code is in {repo}/ (read-write). You can modify it directly — if you do, NYX will restart with your changes.
+Source code is in {repo}/ (read-write). You can modify it directly — if you do,
+NYX will automatically restart with your changes.
 
-## When to return needs_upgrade
-Return status="needs_upgrade" when:
-  - You need the hotfixer to make complex code changes (multi-file refactors, architectural changes)
-  - A required tool or capability is missing and must be added to NYX
-  - Your research reveals that NYX should be improved or upgraded
-
-When returning needs_upgrade, the content field must describe:
-  - What capability is missing or what code needs to change
-  - Why this change is necessary
-  - Which files are involved and what kind of changes are needed
-
-## Response Format — CRITICAL
-Your FINAL response (after all tool calls) MUST be a valid JSON object with exactly
-these two keys. No extra text before or after the JSON.
-
-Required format:
-{{
-  "status": "done",
-  "content": "your result here"
-}}
-
-or:
-
-{{
-  "status": "needs_upgrade",
-  "content": "detailed description of what needs to change and why"
-}}
-
-- status must be exactly "done" or "needs_upgrade" (no other values)
-- content must be a non-empty string
-- Wrap in ```json ...``` code fences if you prefer, but the JSON must be parseable
-- Do NOT include any other JSON objects in your final response that could confuse parsing"""
+## Response
+Return a clear summary of what you did and the result."""
 
 
 def _build_system_prompt() -> str:
@@ -103,45 +71,8 @@ def _build_system_prompt() -> str:
     )
 
 
-def _parse_solver_response(text: str) -> Optional[Dict[str, str]]:
-    """Parse the solver's JSON response. Returns dict with status/content, or None."""
-    text = text.strip()
-    # Direct parse
-    try:
-        data = json.loads(text)
-        if isinstance(data, dict) and "status" in data:
-            return {"status": data["status"], "content": data.get("content", ""),
-                    }
-    except (json.JSONDecodeError, TypeError):
-        pass
-    # Code block
-    m = re.search(r'```(?:json)?\s*\n(.*?)\n```', text, re.DOTALL)
-    if m:
-        try:
-            data = json.loads(m.group(1))
-            if isinstance(data, dict) and "status" in data:
-                return {"status": data["status"], "content": data.get("content", ""),
-                        }
-        except (json.JSONDecodeError, TypeError):
-            pass
-    # Find JSON object anywhere
-    brace_start = text.find('{')
-    if brace_start >= 0:
-        try:
-            data = json.loads(text[brace_start:])
-            if isinstance(data, dict) and "status" in data:
-                return {"status": data["status"], "content": data.get("content", ""),
-                        }
-        except (json.JSONDecodeError, TypeError):
-            pass
-    return None
-
-
 def solve(llm, executor, tools, requirement, skills_doc, tid=""):
-    """Returns dict with keys: result, raw, calls, status.
-
-    status is 'done' or 'needs_upgrade'.
-    """
+    """Returns dict with content key."""
     _start_time = time.time()
 
     prior = (f"--- NYX just restarted after a code upgrade. Your changes are active. ---\nContinue from your note:\n{skills_doc}\n\n" if skills_doc else "")
@@ -197,27 +128,8 @@ def solve(llm, executor, tools, requirement, skills_doc, tid=""):
 
     out = res["content"] or ""
     _sess({"type": "output", "text": out})
-    calls_list = res.get("calls", [])
 
     if not out.strip():
         raise RuntimeError("Empty response from llm.run_agent")
 
-    parsed = _parse_solver_response(out)
-    if parsed is None:
-        # Fallback: treat raw text as done content
-        num_calls = len(calls_list)
-        elapsed = time.time() - _start_time
-        footer = f"\n[solved with {num_calls} tool calls in {elapsed:.1f} seconds]"
-        return {"result": out.strip() + footer, "raw": out,
-                "content": out.strip(), "calls": calls_list, "status": "done"}
-
-    num_calls = len(calls_list)
-    elapsed = time.time() - _start_time
-    footer = f"\n[solved with {num_calls} tool calls in {elapsed:.1f} seconds]"
-    return {
-        "result": parsed["content"] + footer,
-        "raw": out,
-        "content": parsed["content"],
-        "calls": calls_list,
-        "status": parsed["status"],
-    }
+    return out.strip()
