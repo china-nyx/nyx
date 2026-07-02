@@ -35,7 +35,7 @@ def evolve(agent_fn):
         _re_exec()
     elif g.dirty():
         msg = _extract_message(result)
-        g.commit(f"nyx: {msg[:200]}")
+        g.commit(f"nyx: {msg}")
         logger.info(f"[evolver] committed dirty changes, restarting")
         _re_exec()
 
