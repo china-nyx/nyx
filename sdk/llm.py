@@ -93,13 +93,20 @@ class LLM:
         raise last_err
 
     def chat(self, messages: List[Dict], temperature: float = 0.6, max_tokens: int = 2048,
-             response_format: Optional[Dict] = None) -> str:
-        """Non-streaming chat completion. Returns assistant text."""
+             response_format: Optional[Dict] = None) -> Dict:
+        """Non-streaming chat completion. Returns AssistantMessage dict."""
         body = {"model": self.model, "messages": messages,
                 "temperature": temperature, "max_tokens": max_tokens, "stream": False}
         if response_format:
             body["response_format"] = response_format
         resp = self._post(body)
         msg = resp["choices"][0]["message"]
-        return _strip_think(msg.get("content") or msg.get("reasoning_content") or "")
+        content = _strip_think(msg.get("content") or msg.get("reasoning_content") or "")
+        return {
+            "role": "assistant",
+            "content": content,
+            "stopReason": resp["choices"][0].get("finish_reason", "stop"),
+            "usage": {k: resp.get("usage", {}).get(k, 0) for k in ("input","output","cacheRead","cacheWrite","totalTokens")},
+            "timestamp": int(time.time() * 1000),
+        }
 

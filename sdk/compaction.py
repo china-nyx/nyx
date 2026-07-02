@@ -201,8 +201,9 @@ class ChatClient:
     """Minimal interface for compaction to call the LLM.
 
     The LLM class implements this via its chat() method.
+    Returns AssistantMessage dict with "content" key.
     """
-    def chat(self, messages: List[Dict], *, temperature: float, max_tokens: int) -> str: ...
+    def chat(self, messages: List[Dict], *, temperature: float, max_tokens: int) -> Dict: ...
 
 
 def summarize(client: ChatClient, system_msg: str, compactable: List[Dict],
@@ -228,7 +229,7 @@ def summarize(client: ChatClient, system_msg: str, compactable: List[Dict],
     else:
         user_parts.append(COMPACT_PROMPT)
 
-    summary = client.chat(
+    result = client.chat(
         [
             {"role": "system", "content": COMPACT_SYSTEM},
             {"role": "user", "content": "\n\n".join(user_parts)},
@@ -236,7 +237,7 @@ def summarize(client: ChatClient, system_msg: str, compactable: List[Dict],
         temperature=0.3,
         max_tokens=_COMPACT_SUMMARIZE_TOKENS,
     )
-    return (summary or "").strip()
+    return (result.get("content") or "").strip()
 
 
 # ── Full compaction step ────────────────────────────────────────────
