@@ -64,4 +64,4 @@ def fix(llm, executor, requirement: str, tid: str = "") -> dict:
         ],
         tool_executor=executor, tools=ALL_TOOLS, temperature=0.5, on_step=_on_step)
 
-    return {"content": (res.get("content") or "").strip()}
+    return (res.get("content") or "").strip()

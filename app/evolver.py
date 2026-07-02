@@ -43,9 +43,7 @@ def evolve(agent_fn):
 
 
 def _extract_message(result):
-    """Extract a commit message from agent result."""
-    if isinstance(result, dict):
-        return result.get("content", "upgrade") or "upgrade"
+    """Extract a commit message from agent result (plain text)."""
     if isinstance(result, str):
-        return result[:200]
+        return result[:200] or "upgrade"
     return "upgrade"
