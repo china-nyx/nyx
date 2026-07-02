@@ -39,5 +39,4 @@ def fix(llm, executor, requirement: str, tid: str = "") -> str:
                        user_content=(
                            f"Read the source code in the repo at {config.REPO}/\n"
                            f"Analyze what needs to change, implement it, and describe what you did."),
-                       temperature=0.5,
-                       record_fn=_record)
+                       temperature=0.5)

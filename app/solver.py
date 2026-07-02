@@ -60,13 +60,6 @@ def solve(llm, executor, tools, requirement, tid=""):
     skill_prefix = (skill_index + "\n\n" if skill_index else "")
     user = skill_prefix + f"TASK:\n{requirement}"
 
-    def _record(step, name, args, res_, err, duration):
-        return {"type": "tool", "tool": name, "step": step,
-                "duration": duration,
-                "args": args or {},
-                "ok": (not err), "result": str(res_),
-                "result_brief": _result_brief(res_, err)}
-
     out = run_session(llm, executor,
                       role="solver", tid=tid,
                       system_prompt=_build_system_prompt(),
