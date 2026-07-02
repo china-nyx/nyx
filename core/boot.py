@@ -98,6 +98,9 @@ def main():
     logger.info(f"version {g.short()} -> {config.ENTRY}")
     try:
         getattr(importlib.import_module(mod_name), fn_name)()
+    except (KeyboardInterrupt, SystemExit):
+        # Normal shutdown via SIGTERM/SIGINT — not a crash
+        pass
     except Exception:
         import traceback
         tb = traceback.format_exc()
