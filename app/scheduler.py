@@ -1,26 +1,22 @@
 """Scheduler — task lifecycle management (OS process model).
 
 Each requirement becomes a task with its own persistent directory.
-Tasks have states: new → running → done, or running → upgrade-waiting → running → done.
+Tasks have states: new → running → done.
 Done tasks are removed from the active set — scheduler only scans active tids via task/active.
 
     task/
     ├── active                ← active (non-done) tids, one per line
     ├── index.md              ← human-readable history (all tasks including done)
     └── <tid>/
-        ├── state             ← new | running | upgrade-waiting | done
-        ├── priority          ← integer (99=upgrade preemption, 50=default, 10=sched)
-        ├── parent_tid        ← optional, tid of parent task (for upgrade tasks)
-        ├── pending_upgrade_tid ← optional, tid of child upgrade task (when upgrade-waiting)
-        ├── resume_target     ← solver | editor (which phase to resume after upgrade)
+        ├── state             ← new | running | done
+        ├── priority          ← integer (50=default, 10=sched)
         ├── requirement.md    ← original requirement text
-        ├── note.md           ← cross-restart context for solver/editor
+        ├── note.md           ← cross-session context
         └── result.md         ← final output when done
 
 Scheduling rules (priority order):
-  1. Tasks whose pending_upgrade_tid child is done → restore to running
-  2. Running tasks with highest priority (99 = upgrade preemption)
-  3. New tasks → enter running (solver decides solve vs needs_upgrade)
+  1. Running tasks with highest priority
+  2. New tasks → enter running
 """
 import os
 import time
