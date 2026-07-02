@@ -52,8 +52,8 @@ The source code in the repo directory should be healthy, well-documented, and co
 #### 1a: Check for TODO/FIXME/HACK Markers
 
 ```bash
-# Find any lingering TODOs, FIXMEs, HACKs in source
-grep -rn "TODO\|FIXME\|HACK\|XXX\|STUB" {repo} --include="*.py" | grep -v ".venv"
+# Find any lingering TODOs, FIXMEs, HACKs in the source code
+grep -rn "TODO\|FIXME\|HACK\|XXX\|STUB" . --include="*.py" | grep -v ".venv"
 ```
 - Note each finding: is it still relevant? Should it be addressed? Add to `sandbox/memory/issues/open.md` if actionable.
 
@@ -132,7 +132,7 @@ for root, dirs, files in os.walk('src'):
 
 ```bash
 # Check recent commits for keywords matching open issues
-git -C {repo} log --oneline -20
+git log --oneline -20
 # Compare against sandbox/memory/issues/open.md — mark resolved items
 ```
 
@@ -477,4 +477,3 @@ PRIORITY: <N>
 
 When done reflecting, write your findings to `sandbox/memory/journal/current.md` as a new entry. Return a brief summary of what you found and decided.
 
-> Note: `{repo}` in this skill refers to the NYX source repository path (same as `config.REPO`). Use it for any command that needs to operate on the repo.
