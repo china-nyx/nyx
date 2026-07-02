@@ -67,7 +67,7 @@ def _prune_tool_output(tool_name: str, content: str, max_chars: int = 8000) -> s
 
 # ── Merged JSON Schema mode ────────────────────────────────────────
 
-def _build_merged_schema(tools: List[Dict], business_schema: Optional[Dict] = None) -> Dict:
+def _build_schema(tools: List[Dict], business_schema: Optional[Dict] = None) -> Dict:
     """Build a merged JSON Schema encoding both tool calls and business response.
 
     Schema structure:
@@ -130,7 +130,7 @@ def _build_merged_schema(tools: List[Dict], business_schema: Optional[Dict] = No
     }
 
 
-def _extract_business_schema(response_format: Optional[Dict]) -> Optional[Dict]:
+def _extract_schema(response_format: Optional[Dict]) -> Optional[Dict]:
     """Extract inner schema dict from a response_format payload."""
     if not isinstance(response_format, dict):
         return None
@@ -143,7 +143,7 @@ def _extract_business_schema(response_format: Optional[Dict]) -> Optional[Dict]:
     return None
 
 
-def _parse_merged_response(raw_text: str) -> ChatCompletionResponse:
+def _parse_response(raw_text: str) -> ChatCompletionResponse:
     """Parse JSON text from merged-schema mode into ChatCompletionResponse.
 
     Merged schema: {thought, actions, <business fields>}.
@@ -263,11 +263,11 @@ class LLM:
         ``ChatCompletionResponse`` regardless of the internal mode.
         """
         _msgs = [m.model_dump(exclude_none=True) for m in messages]
-        _merged_mode = bool(tools and response_format)
+        _merged = bool(tools and response_format)
 
-        if _merged_mode:
-            business_schema = _extract_business_schema(response_format)
-            merged = _build_merged_schema(tools, business_schema)
+        if _merged:
+            business_schema = _extract_schema(response_format)
+            merged = _build_schema(tools, business_schema)
             body = {
                 "model": self.model, "messages": _msgs,
                 "temperature": temperature, "max_tokens": max_tokens,
@@ -275,7 +275,7 @@ class LLM:
             }
             raw = self._post(body)
             msg = raw["choices"][0]["message"]
-            return _parse_merged_response(msg.get("content", ""))
+            return _parse_response(msg.get("content", ""))
 
         body = {
             "model": self.model, "messages": _msgs,
