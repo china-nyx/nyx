@@ -1,16 +1,70 @@
 """Agent session helpers — shared on_step factory and session runner."""
 import json
+import re
 import time
 from pathlib import Path
 from typing import Callable, Dict, List, Optional
 
 from app.config import config
-from sdk.git import Git
 from app.log import get_logger
 from sdk.fs import ensure_dir
+from sdk.git import Git
 
 logger = get_logger(__name__)
-from sdk.tools import format_tool_log
+
+
+def _tool_brief(name, args, show_full_path=False):
+    """One-line brief summary of tool args for logging."""
+    args = args or {}
+    if name == "bash":
+        return (args.get("cmd") or args.get("command") or "").strip().replace("\n", " ")[:512]
+    path = args.get("path") or args.get("file") or args.get("filename")
+    pat = args.get("pattern") or args.get("query")
+    if path and pat:
+        return f"{pat!r} in {path}"
+    if path:
+        return str(path)
+    if pat:
+        return str(pat)[:80]
+    return ", ".join(f"{k}={str(v)[:30]}" for k, v in list(args.items())[:2])[:100]
+
+
+def _result_summary(res, err):
+    """Short result summary for inline tool-call log."""
+    if not res:
+        return ""
+    s = str(res).strip()
+    while s and s[0] in ('"', "'", "`"):
+        s = s[1:]
+    lines = [l.strip() for l in s.splitlines() if l.strip()]
+    if not lines:
+        return ""
+    for line in lines:
+        m = re.search(r'exit\s+(\d+)', line)
+        if m:
+            return f"exit {m.group(1)}"
+    if err:
+        return lines[0][:60]
+    total_len = len(s)
+    if total_len < 200:
+        return lines[0]
+    if len(lines) > 1:
+        return f"{len(lines)} lines"
+    return ""
+
+
+def format_tool_log(role, context, step_num, name, args, res, err, duration, *, context2=None):
+    """Format a single-line unified tool-call log entry."""
+    status = "✗" if err else "✓"
+    brief = _tool_brief(name, args, show_full_path=err)
+    ctx = f"[{context}]"
+    if context2:
+        ctx += f" [{context2}]"
+    parts = [f"{ctx} step {step_num}: {name} {status} ({duration:.1f}s) — {brief}"]
+    summary = _result_summary(res, err)
+    if summary:
+        parts.append(f"→ {summary}")
+    return " ".join(parts)
 
 
 def _session_file(sess_dir: Path, role: str, ver: str) -> Path:
@@ -93,7 +147,7 @@ def run_session(llm, executor, *,
         for p in old:
             p.unlink(missing_ok=True)
 
-    _on_step = make_on_step(role, tid, sess_path=sess_path, record_fn=record_fn)
+    _on_step = make_on_step(role, tid, sess_path=sess_path)
 
     if log_run:
         _write_session_record(sess_path, {

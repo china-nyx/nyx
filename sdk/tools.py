@@ -88,65 +88,6 @@ class Tools:
             return "old_text not found", True
         atomic_write_text(p, content.replace(old, args.get("new_text", ""), 1))
         return "edited", False
-
-# ── Shared tool-call logging helpers (used by solver) ───────────────────────
-
-def _tool_brief(name, args, show_full_path=False):
-    """One-line brief summary of tool args for logging."""
-    args = args or {}
-    if name == "bash":
-        return (args.get("cmd") or args.get("command") or "").strip().replace("\n", " ")[:512]
-    path = args.get("path") or args.get("file") or args.get("filename")
-    pat = args.get("pattern") or args.get("query")
-    if path and pat:
-        display_path = str(path)
-        return f"{pat!r} in {display_path}"
-    if path:
-        return str(path)
-    if pat:
-        return str(pat)[:80]
-    return ", ".join(f"{k}={str(v)[:30]}" for k, v in list(args.items())[:2])[:100]
-
-
-def _result_summary(res, err):
-    """Short result summary for inline tool-call log."""
-    import re
-    if not res:
-        return ""
-    s = str(res).strip()
-    while s and s[0] in ('"', "'", "`"):
-        s = s[1:]
-    lines = [l.strip() for l in s.splitlines() if l.strip()]
-    if not lines:
-        return ""
-    for line in lines:
-        m = re.search(r'exit\s+(\d+)', line)
-        if m:
-            return f"exit {m.group(1)}"
-    if err:
-        return lines[0][:60]
-    total_len = len(s)
-    if total_len < 200:
-        return lines[0]
-    if len(lines) > 1:
-        return f"{len(lines)} lines"
-    return ""
-
-
-def format_tool_log(role, context, step_num, name, args, res, err, duration, *, context2=None):
-    """Format a single-line unified tool-call log entry."""
-    status = "✗" if err else "✓"
-    brief = _tool_brief(name, args, show_full_path=err)
-    ctx = f"[{context}]"
-    if context2:
-        ctx += f" [{context2}]"
-    parts = [f"{ctx} step {step_num}: {name} {status} ({duration:.1f}s) — {brief}"]
-    summary = _result_summary(res, err)
-    if summary:
-        parts.append(f"→ {summary}")
-    return " ".join(parts)
-
-
 # ── Tool schemas (4 base tools; everything else is a skill) ───────────
 # Code upgrades are handled by the evolver FSM phase.
 
