@@ -3,9 +3,9 @@ import os
 import sys
 from pathlib import Path
 
-from core import config
+from app.config import config
 from sdk.git import Git
-from core.log import get_logger
+from app.log import get_logger
 
 logger = get_logger(__name__)
 

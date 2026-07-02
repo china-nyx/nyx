@@ -3,7 +3,7 @@ import os
 from pathlib import Path
 from typing import List, Tuple
 
-from core import config
+from app.config import config
 
 
 def _parse_frontmatter(text: str) -> dict:

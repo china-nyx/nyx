@@ -10,12 +10,12 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from core.log import get_logger
+from app.log import get_logger
 logger = get_logger("core.boot")
 
 
 def main():
-    from core import config
+    from app.config import config
     from sdk.git import Git
 
     # Ensure cwd is the runtime root so all derived paths resolve correctly
@@ -34,7 +34,7 @@ def main():
         pass
     except Exception as e:
         logger.exception("agent crashed, starting self-heal")
-        from core.self_heal import run
+        from app.self_heal import run
         run(e)
 
 

@@ -10,10 +10,10 @@ import signal
 import time
 from pathlib import Path
 
-from core import config
+from app.config import config
 from sdk.fs import ensure_dir
 from sdk.git import Git
-from core.log import get_logger
+from app.log import get_logger
 
 logger = get_logger(__name__)
 from sdk.llm import LLM

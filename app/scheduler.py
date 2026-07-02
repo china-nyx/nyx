@@ -23,9 +23,9 @@ import time
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
-from core import config
+from app.config import config
 from sdk.fs import ensure_dir
-from core.log import get_logger
+from app.log import get_logger
 
 logger = get_logger(__name__)
 

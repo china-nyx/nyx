@@ -10,8 +10,8 @@ import time
 import urllib.request
 from typing import Dict, List, Optional
 
-from core import config
-from core.log import get_logger
+from app.config import config
+from app.log import get_logger
 
 logger = get_logger(__name__)
 

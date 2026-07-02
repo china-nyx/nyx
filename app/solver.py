@@ -4,7 +4,7 @@ from __future__ import annotations
 
 Runs an LLM session. If it modifies repo code, evolver detects dirty → commit + restart."""
 
-from core import config
+from app.config import config
 from app.agent_session import run_session
 from sdk.skills import scan_skills
 

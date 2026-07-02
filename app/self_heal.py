@@ -1,12 +1,12 @@
 """Self-heal — recover from crashes by fixing the code."""
 import traceback as _tb
-from core.log import get_logger
+from app.log import get_logger
 logger = get_logger(__name__)
 
 
 def run(exc: Exception) -> None:
     """Try to fix the code that caused a crash."""
-    from core import config
+    from app.config import config
     from sdk.llm import LLM
     from sdk.tools import Tools
     from app import evolver, hotfixer

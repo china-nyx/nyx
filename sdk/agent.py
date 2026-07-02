@@ -10,7 +10,7 @@ import time
 from collections import deque
 from typing import Callable, Dict, List, Optional, Set
 
-from core.log import get_logger
+from app.log import get_logger
 
 from sdk.compaction import (
     clamp_max_tokens,

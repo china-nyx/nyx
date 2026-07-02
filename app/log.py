@@ -20,7 +20,7 @@ def _init():
     global _initialized
     if _initialized:
         return
-    from core import config
+    from app.config import config
     from sdk.fs import ensure_dir
     from logging.handlers import TimedRotatingFileHandler
 
@@ -43,7 +43,7 @@ def _version_filter(record):
     """Lazy version filter — defers git call until first log."""
     try:
         from sdk.git import Git
-        from core import config
+        from app.config import config
         record._version = Git(config.REPO).short()
     except Exception:
         record._version = "???"

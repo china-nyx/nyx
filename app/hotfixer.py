@@ -1,5 +1,5 @@
 """Hotfixer — mini code-fix agent. 4 base tools only, modifies repo source."""
-from core import config
+from app.config import config
 from app.agent_session import run_session
 
 SYSTEM_TEMPLATE = """\
