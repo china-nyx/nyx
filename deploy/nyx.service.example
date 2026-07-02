@@ -10,7 +10,7 @@ Wants=network-online.target
 Type=simple
 User=YOUR_USER
 WorkingDirectory=/path/to/nyx/workspace
-ExecStart=/path/to/nyx/repo/.venv/bin/python3 /path/to/nyx/repo/core/boot.py
+ExecStart=/path/to/nyx/repo/.venv/bin/python3 /path/to/nyx/repo/app/boot.py
 
 # Crash recovery ("stay alive" parent; owner can always `systemctl stop`).
 Restart=on-failure

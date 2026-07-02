@@ -9,7 +9,7 @@ This document is for **developers** working on NYX itself. For user-facing docum
 - **Skills over tools**: New capabilities go in `skills/<name>/` as SKILL.md + scripts, NOT as new `_t_*` methods in `sdk/tools.py`.
 - **Skill pattern**: Each skill is a directory with `SKILL.md` (frontmatter: name, description) and optional `scripts/` subdirectory. The LLM reads the SKILL.md via `read`, then executes steps using `bash` to call scripts.
 - **All code is modifiable**: solver can modify repo source directly — evolver detects changes and commits + restarts.
-- **Hotfixer is the stable core**: `app/hotfixer.py` only depends on core/ + sdk/. Boot invokes it directly when anything fails.
+- **Hotfixer is the stable core**: `app/hotfixer.py` only depends on `app/config.py` + `sdk/`. Boot invokes it directly when anything fails.
 
 ## Skill Development
 

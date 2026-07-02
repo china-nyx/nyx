@@ -1,6 +1,6 @@
 """Hotfixer — mini code-fix agent. 4 base tools only, modifies repo source."""
 from app.config import config
-from app.agent_session import run_session
+from app.session import run_session
 
 SYSTEM_TEMPLATE = """\
 You are NYX's hotfixer. Fix the following issue by modifying source code in the repo.

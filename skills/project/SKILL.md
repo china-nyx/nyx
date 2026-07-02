@@ -14,7 +14,6 @@ sandbox/
 ├── INDEX.md                    ← Sandbox root index (all directories and their purpose)
 ├── memory/                     ← NYX self-memory (system — identity, goals, journal)
 │   └── INDEX.md                ← Memory file index (identity.md, goals.md, ...)
-├── src → CODE                  ← Source repo symlink (read-only)
 ├── task/                       ← Scheduler task state (managed by scheduler)
 ├── temp/                       ← Global scratch space (auto-cleaned on restart)
 ├── projects/                   ← All long-running projects
@@ -57,7 +56,7 @@ sandbox/projects/<project-name>/
 | Directory | Purpose |
 |-----------|---------|
 | memory/   | Self-memory — identity, goals, journal, issues |
-| src → CODE | Source repo symlink (read-only) |
+# source repo is at {repo}
 | task/     | Scheduler task state |
 
 ## Projects (`sandbox/projects/`)

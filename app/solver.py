@@ -35,7 +35,7 @@ Everything under {cwd} is YOUR runtime workspace (read-write). Key subdirectorie
   - skills/ → runtime skills (override built-in by name)
     Built-in skills are loaded from the source repo at runtime.
     Instance-specific skills go here and shadow built-in ones of the same name.
-  - task/ → task state (note.md, result.md, sessions/)
+  - task/ → task state (state, priority, requirement.md, result.md, sessions/)
   - mailbox/inbox/ → incoming requirements (scheduler consumes these)
 
 Source code is in {repo}/ (read-write). You can modify it directly — if you do,

@@ -28,10 +28,11 @@ crash ─▶ boot catches exception ─▶ evolve(hotfixer) → fix code → res
 ### Source Repository
 
 ```
-core/       — boot, git, config, log
-app/        — agent, evolver, hotfixer, solver, scheduler
-sdk/        — tools.py (4 base tools), llm.py, atomic_io, exceptions
+app/        — boot, config, evolver, hotfixer, log, main, scheduler, self_heal, session, solver
+sdk/        — agent.py (loop), compaction.py, llm.py, tools.py, fs.py, git.py, skills.py
 skills/     — built-in skills (loaded at runtime from source repo)
+deploy/     — systemd unit template
+tests/      — test suite
 ```
 
 ### Runtime State (cwd)
@@ -99,14 +100,14 @@ and talks to any OpenAI-compatible model server (e.g. a local `llama-server`).
 }
 
 cd /path/to/nyx/workspace
-python3 /path/to/nyx/repo/core/boot.py
+python3 /path/to/nyx/repo/app/boot.py
 ```
 
 Or with systemd (recommended for production):
 
 ```ini
 [Service]
-ExecStart=/path/to/nyx/repo/.venv/bin/python3 /path/to/nyx/repo/core/boot.py
+ExecStart=/path/to/nyx/repo/.venv/bin/python3 /path/to/nyx/repo/app/boot.py
 WorkingDirectory=/path/to/nyx/workspace
 Restart=on-failure
 ```
@@ -138,4 +139,4 @@ All runtime config is in `config/settings.json`. Env vars override file values:
 }
 ```
 
-See `core/config.py` for all keys and env var overrides.
+See `app/config.py` for all keys and env var overrides.
