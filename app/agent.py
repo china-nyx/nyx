@@ -12,7 +12,7 @@ from pathlib import Path
 
 from core import config
 from sdk.fs import ensure_dir
-from core.git import Git
+from sdk.git import Git
 from core.log import get_logger
 
 logger = get_logger(__name__)

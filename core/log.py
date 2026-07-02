@@ -42,7 +42,7 @@ def _init():
 def _version_filter(record):
     """Lazy version filter — defers git call until first log."""
     try:
-        from core.git import Git
+        from sdk.git import Git
         from core import config
         record._version = Git(config.REPO).short()
     except Exception:

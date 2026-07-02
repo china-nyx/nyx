@@ -1,10 +1,7 @@
-"""Git wrapper — every evolution generation is a commit/tag; the full lineage is traceable and rollback-able."""
+"""Git wrapper — repo operations (dirty, commit, tag)."""
 import subprocess
 from pathlib import Path
 from typing import List
-
-from core.log import get_logger
-logger = get_logger(__name__)
 
 
 class Git:
@@ -27,7 +24,6 @@ class Git:
     def commit(self, message: str) -> bool:
         self._run("add", "-A")
         if not self.dirty():
-            # May already be staged but with no worktree changes; still attempt to commit
             if self._run("diff", "--cached", "--quiet").returncode == 0:
                 return True
         return self._run("commit", "-m", message).returncode == 0

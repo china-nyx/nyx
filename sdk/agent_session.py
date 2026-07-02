@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Callable, Dict, List, Optional
 
 from core import config
-from core.git import Git
+from sdk.git import Git
 from core.log import get_logger
 from sdk.fs import ensure_dir
 

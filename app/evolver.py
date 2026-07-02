@@ -4,7 +4,7 @@ import sys
 from pathlib import Path
 
 from core import config
-from core.git import Git
+from sdk.git import Git
 from core.log import get_logger
 
 logger = get_logger(__name__)

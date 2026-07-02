@@ -16,7 +16,7 @@ logger = get_logger("core.boot")
 
 def main():
     from core import config
-    from core.git import Git
+    from sdk.git import Git
 
     # Ensure cwd is the runtime root so all derived paths resolve correctly
     config.ensure_runtime_dirs()
