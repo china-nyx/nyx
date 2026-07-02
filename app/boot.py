@@ -23,8 +23,9 @@ def main():
     os.chdir(str(config.HOME))
 
     g = Git(config.REPO)
+    (config.HOME / "nyx.pid").write_text(str(os.getpid()))
 
-    logger.info(f"version {g.short()}")
+    logger.info(f"version {g.short()} (pid {os.getpid()})")
     from app.main import run
     try:
         run()
