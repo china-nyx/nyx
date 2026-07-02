@@ -70,8 +70,15 @@ def _prune_tool_output(tool_name: str, content: str, max_chars: int = 8000) -> s
 def _build_merged_schema(tools: List[Dict], business_schema: Optional[Dict] = None) -> Dict:
     """Build a merged JSON Schema encoding both tool calls and business response.
 
-    Uses flat structure (no nested result object) because llama-server does not
-    reliably honour oneOf / deeply-nested schemas.
+    Schema structure:
+    {
+      "thought": "string",          // Reasoning process
+      "actions": [{...}],           // Tool calls (empty when done)
+      "result": {...}               // Final answer when no more tools needed
+    }
+
+    llama-server supports nested schemas via json_schema, so we keep the result
+    object nested. The description fields guide the model to use the schema correctly.
     """
     # Build action items from tool definitions
     tool_items = []
