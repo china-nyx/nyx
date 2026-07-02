@@ -15,6 +15,12 @@ Repo: {repo}
 ## Requirement
 {requirement}
 
+## Workflow
+1. Read the relevant source files to understand the problem
+2. Implement the fix using read/write/edit tools
+3. **Commit your changes**: `git add -A && git commit -m 'fix: <brief description>'`
+4. Return a summary of what you changed and why
+
 ## Response
 First summarize what you changed, then list changes one line per file."""
 

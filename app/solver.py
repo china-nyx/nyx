@@ -38,8 +38,9 @@ Everything under {cwd} is YOUR runtime workspace (read-write). Key subdirectorie
   - task/ → task state (state, priority, requirement.md, result.md, sessions/)
   - mailbox/inbox/ → incoming requirements (scheduler consumes these)
 
-Source code is in {repo}/ (read-write). You can modify it directly — if you do,
-NYX will automatically restart with your changes.
+Source code is in {repo}/ (read-write). You can modify it directly.
+After modifying source code, ALWAYS commit with: `git add -A && git commit -m '<brief desc>'`.
+Then return your result — NYX will detect the commit and restart automatically.
 
 ## Response
 Return a clear summary of what you did and the result."""
