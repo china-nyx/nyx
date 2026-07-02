@@ -10,14 +10,21 @@ from app.log import get_logger
 logger = get_logger(__name__)
 
 
-def _re_exec():
-    """Restart NYX via boot.py. Never returns on success."""
-    boot_py = config.REPO / "core" / "boot.py"
+def _re_exec(tid: str = None, result: str = None):
+    """Restart NYX via boot.py. Never returns on success.
+
+    If tid/result given, mark the task done before restarting so it doesn't retry."""
+    if tid:
+        from app import scheduler
+        scheduler.mark_done(tid, result or "")
+        logger.info(f"[evolver] marked {tid} done before restart")
+
+    boot_py = config.REPO / "app" / "boot.py"
     logger.info("[evolver] re-execing NYX...")
     os.execv(sys.executable, [sys.executable, str(boot_py)])
 
 
-def evolve(agent_fn):
+def evolve(agent_fn, tid: str = None):
     """Run an agent callable. If the repo changed (committed or dirty), commit + restart."""
     g = Git(config.REPO)
 
@@ -32,12 +39,12 @@ def evolve(agent_fn):
     post_head = g.short()
     if post_head != pre_head:
         logger.info(f"[evolver] HEAD changed ({pre_head} → {post_head}), restarting")
-        _re_exec()
+        _re_exec(tid, result)
     elif g.dirty():
         msg = _extract_message(result)
         g.commit(f"nyx: {msg}")
         logger.info(f"[evolver] committed dirty changes, restarting")
-        _re_exec()
+        _re_exec(tid, result)
 
     return result
 

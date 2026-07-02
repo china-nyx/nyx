@@ -138,12 +138,13 @@ class Agent:
         from app import scheduler
 
         result = evolver.evolve(
-            lambda: solver.solve(self.llm, self._executor, ALL_TOOLS, requirement, note, tid=tid))
+            lambda: solver.solve(self.llm, self._executor, ALL_TOOLS, requirement, note, tid=tid),
+            tid=tid)
 
         if not result:
             return "no result yet; will retry"
 
-        # Save result to task
+        # No code change — mark done here (evolver only marks done when restarting)
         scheduler.mark_done(tid, result)
         return "solved"
 
