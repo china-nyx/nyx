@@ -2,16 +2,15 @@
 import os
 from pathlib import Path
 
-# CODE is auto-detected from this file's location
-CODE = Path(__file__).resolve().parent.parent
+# REPO is auto-detected from this file's location
+REPO = Path(__file__).resolve().parent.parent
 
 HOME = Path.cwd().resolve()
 # WorkingDirectory in systemd unit determines runtime root
-if HOME == CODE or str(HOME).startswith(str(CODE) + os.sep):
-    raise RuntimeError(f"Runtime root ({HOME}) must not be inside the source repo ({CODE}).")
+if HOME == REPO or str(HOME).startswith(str(REPO) + os.sep):
+    raise RuntimeError(f"Runtime root ({HOME}) must not be inside the source repo ({REPO}).")
 
 # Derived paths
-WORKTREES = HOME / "worktree"
 LOG_DIR = HOME / "log"
 LOG_FILE = LOG_DIR / "nyx.log"
 LOG_KEEP_DAYS = 7  # keep last N days of rotated logs
@@ -19,8 +18,6 @@ INBOX_DIR = HOME / "mailbox" / "inbox"  # only inbox is used; files ingested to 
 TASK_DIR = HOME / "task"  # task/<tid>/ — per-task persistent state
 SKILLS_DIR = HOME / "skills"
 SANDBOX_DIR = HOME / "sandbox"
-SRC_LINK = HOME / "sandbox" / "src"  # symlink -> CODE, so solver sees source under sandbox/
-
 # ── Runtime settings (config/settings.json) ────────────────
 _CONFIG_DIR = HOME / "config"
 _SETTINGS_FILE = _CONFIG_DIR / "settings.json"
@@ -56,5 +53,5 @@ KEEP_SESSIONS = int(os.environ.get("NYX_KEEP_SESSIONS") or _settings.get("log", 
 ENTRY = os.environ.get("NYX_ENTRY", "app.agent:run")
 
 # Ensure directories exist
-for _d in [HOME, WORKTREES, INBOX_DIR, TASK_DIR, LOG_DIR]:
+for _d in [HOME, INBOX_DIR, TASK_DIR, LOG_DIR]:
     _d.mkdir(parents=True, exist_ok=True)
