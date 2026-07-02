@@ -100,10 +100,13 @@ def _build_merged_schema(tools: List[Dict], business_schema: Optional[Dict] = No
         },
     }
 
-    # Flatten business schema fields into the top level
+    # Nest business schema under a "result" field
     if business_schema:
-        for key, value in business_schema.get("properties", {}).items():
-            properties[key] = value
+        properties["result"] = {
+            "type": "object",
+            "description": "Final answer when no more tools are needed. Only provide when actions is empty.",
+            **business_schema,
+        }
 
     return {
         "type": "json_schema",
@@ -184,9 +187,18 @@ def _parse_merged_response(raw_text: str) -> ChatCompletionResponse:
             usage=Usage(completion_tokens=0, prompt_tokens=0, total_tokens=0),
         )
 
-    # No actions → final result: collect all non-meta fields as the answer
-    business = {k: v for k, v in parsed.items()
-                if k not in ("thought", "actions")}
+    # No actions → final result
+    result = parsed.get("result")
+    if isinstance(result, dict):
+        content = json.dumps(result)
+    elif result is not None:
+        content = str(result)
+    else:
+        # Fallback: collect non-meta fields
+        business = {k: v for k, v in parsed.items()
+                    if k not in ("thought", "actions")}
+        content = json.dumps(business) if business else parsed.get("thought", "")
+
     return ChatCompletionResponse(
         id="merged-result", object="chat.completion", model="merged",
         created=0,
@@ -194,7 +206,7 @@ def _parse_merged_response(raw_text: str) -> ChatCompletionResponse:
             index=0,
             message=ChatResponseMessage(
                 role="assistant",
-                content=json.dumps(business) if business else parsed.get("thought", ""),
+                content=content,
             ),
             finish_reason="stop",
         )],
