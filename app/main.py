@@ -118,13 +118,12 @@ class Agent:
         """Execute a task via evolver.evolve(solver.solve)."""
         from app import scheduler
 
-        prepared = scheduler.prepare_task(tid)
-        if prepared is None:
+        requirement = scheduler.prepare_task(tid)
+        if requirement is None:
             return f"unknown state {scheduler.get_state(tid)}"
 
-        requirement, note = prepared
         result = evolver.evolve(
-            lambda: solver.solve(self.llm, self._executor, ALL_TOOLS, requirement, note, tid=tid),
+            lambda: solver.solve(self.llm, self._executor, ALL_TOOLS, requirement, tid=tid),
             tid=tid)
 
         if not result:

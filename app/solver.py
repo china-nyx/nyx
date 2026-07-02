@@ -5,7 +5,7 @@ from __future__ import annotations
 Runs an LLM session. If it modifies repo code, evolver detects dirty → commit + restart."""
 
 from app.config import config
-from app.agent_session import run_session
+from app.session import run_session
 from sdk.skills import scan_skills
 
 
@@ -53,12 +53,11 @@ def _build_system_prompt() -> str:
     )
 
 
-def solve(llm, executor, tools, requirement, skills_doc, tid=""):
+def solve(llm, executor, tools, requirement, tid=""):
     """Returns assistant text."""
-    prior = (f"--- NYX just restarted after a code upgrade. Your changes are active. ---\nContinue from your note:\n{skills_doc}\n\n" if skills_doc else "")
     skill_index = scan_skills()
     skill_prefix = (skill_index + "\n\n" if skill_index else "")
-    user = prior + skill_prefix + f"TASK:\n{requirement}"
+    user = skill_prefix + f"TASK:\n{requirement}"
 
     def _record(step, name, args, res_, err, duration):
         return {"type": "tool", "tool": name, "step": step,

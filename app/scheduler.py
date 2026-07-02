@@ -11,7 +11,6 @@ Done tasks are removed from the active set — scheduler only scans active tids 
         ├── state             ← new | running | done
         ├── priority          ← integer (50=default, 10=sched)
         ├── requirement.md    ← original requirement text
-        ├── note.md           ← cross-session context
         └── result.md         ← final output when done
 
 Scheduling rules: running tasks first (highest priority), then new tasks.
@@ -154,7 +153,6 @@ def create_task(requirement: str, priority: int = 50,
     _write(tid, "state", "new")
     _write(tid, "priority", str(priority))
     _write(tid, "requirement.md", requirement)
-    _write(tid, "note.md", "")
     if source_file:
         _write(tid, "source_file", source_file)
 
@@ -185,22 +183,17 @@ def mark_done(tid: str, result: str = "") -> None:
     _update_index()
 
 
-def prepare_task(tid: str) -> Optional[Tuple[str, str]]:
-    """Prepare a task for execution. Returns (requirement, note) or None.
+def prepare_task(tid: str) -> Optional[str]:
+    """Prepare a task for execution. Returns requirement or None.
 
-    - new → running: returns (requirement, "")
-    - running: returns (requirement, note)
-    - other: returns None
-    """
+    Transitions new → running. Returns None if state is invalid."""
     state = get_state(tid)
     if state not in ("new", "running"):
         return None
     requirement = _read(tid, "requirement.md") or ""
-    note = _read(tid, "note.md") or ""
     if state == "new":
         set_state(tid, "running")
-        return requirement, ""
-    return requirement, note
+    return requirement
 
 
 # ── Scheduler ────────────────────────────────────────────────────────
