@@ -14,6 +14,11 @@ from app.log import get_logger
 logger = get_logger("core.boot")
 
 
+def _write_pid(home: Path) -> None:
+    """Write current process pid to nyx.pid."""
+    (home / "nyx.pid").write_text(str(os.getpid()))
+
+
 def main():
     from app.config import config
     from sdk.git import Git
@@ -23,7 +28,7 @@ def main():
     os.chdir(str(config.HOME))
 
     g = Git(config.REPO)
-    (config.HOME / "nyx.pid").write_text(str(os.getpid()))
+    _write_pid(config.HOME)
 
     logger.info(f"version {g.short()} (pid {os.getpid()})")
     from app.main import run
