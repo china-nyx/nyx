@@ -1,14 +1,13 @@
 """Agent — the app's main entry point.
 
 OS process model: each requirement is a task with its own persistent directory.
-The scheduler picks the next task, agent executes it via solver.solve().
+The scheduler picks the next task, agent executes it via executor.run_with_memory().
 
-    inbox/*.md → scheduler creates task/ → agent picks → solver.run() → restart if HEAD changed
+    inbox/*.md → scheduler creates task/ → agent picks → executor.run_with_memory(solver) → restart if HEAD changed
 """
 import logging
 import os
 import signal
-import sys
 import time
 from pathlib import Path
 
@@ -32,13 +31,6 @@ def _sig(signum, frame):
     _running = False
     logger.info(f"signal {signum}, stopping...")
     raise _Shutdown()
-
-
-def restart():
-    """Restart NYX via boot.py. Never returns on success."""
-    boot_py = config.repo / "app" / "boot.py"
-    logger.info("[main] re-execing NYX...")
-    os.execv(sys.executable, [sys.executable, str(boot_py)])
 
 
 class Agent:
@@ -118,8 +110,8 @@ class Agent:
         return None
 
     def _execute_task(self, tid: str) -> str:
-        """Execute a task via solver.solve()."""
-        from app import scheduler
+        """Execute a task via executor.run_with_memory(solver.solve)."""
+        from app import scheduler, executor
 
         requirement = scheduler.prepare_task(tid)
         if requirement is None:
@@ -131,26 +123,12 @@ class Agent:
         if prev_memory:
             requirement = f"{requirement}\n\n## Previous Session Memory\n{prev_memory}"
 
-        g = Git(config.repo)
-        pre_head = g.short()
-        logger.info(f"[{tid}] session start, HEAD={pre_head}")
-
-        result = solver.solve(self.llm, self._executor, ALL_TOOLS, requirement, tid=tid)
+        result = executor.run_with_memory(
+            lambda: solver.solve(self.llm, self._executor, ALL_TOOLS, requirement, tid=tid),
+            tid=tid)
 
         if not result:
             return "no result yet; will retry"
-
-        post_head = g.short()
-        head_changed = (post_head != pre_head)
-
-        if head_changed:
-            # Code was modified — save memory and restart
-            try:
-                mem_path.write_text(result, encoding="utf-8")
-                logger.info(f"[{tid}] saved memory to {mem_path}")
-            except Exception:
-                pass
-            restart()
 
         # No code change — mark done here
         scheduler.mark_done(tid, result)

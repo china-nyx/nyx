@@ -1,4 +1,4 @@
-"""Executor — run agent and restart if repo changed."""
+"""Executor — run agent, detect HEAD change, restart."""
 import logging
 import os
 import sys
@@ -18,20 +18,48 @@ def _re_exec():
 
 
 def run(agent_fn):
-    """Run an agent callable. Returns (result, head_changed)."""
-    g = Git(config.repo)
+    """Run an agent callable. If HEAD changed, restart (never returns).
 
+    Returns the agent result if no code was modified.
+    """
+    g = Git(config.repo)
     pre_head = g.short()
     logger.info(f"[executor] session start, HEAD={pre_head}")
 
     result = agent_fn()
 
     post_head = g.short()
-    head_changed = (post_head != pre_head)
-    if head_changed:
-        logger.info(f"[executor] HEAD changed ({pre_head} → {post_head})")
+    if post_head != pre_head:
+        logger.info(f"[executor] HEAD changed ({pre_head} → {post_head}), restarting")
+        _re_exec()
 
-    return result, head_changed
+    return result
 
 
+def run_with_memory(agent_fn, tid: str):
+    """Run agent with memory persistence.
 
+    - Reads task/<tid>/memory.md before running (if exists)
+    - Saves result to task/<tid>/memory.md if HEAD changed
+    - Restarts if HEAD changed (never returns)
+    - Returns result if no code was modified
+    """
+    mem_path = config.task_dir / tid / "memory.md"
+
+    g = Git(config.repo)
+    pre_head = g.short()
+    logger.info(f"[executor] session start, HEAD={pre_head}")
+
+    result = agent_fn()
+
+    post_head = g.short()
+    if post_head != pre_head:
+        # Save memory and restart
+        try:
+            mem_path.write_text(result, encoding="utf-8")
+            logger.info(f"[executor] saved memory to {mem_path}")
+        except Exception:
+            pass
+        _re_exec()
+
+    return result
