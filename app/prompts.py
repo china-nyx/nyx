@@ -85,9 +85,7 @@ def get_hotfixer_template(requirement: str) -> str:
 First summarize what you changed, then list changes one line per file."""
 
 
-def get_hotfixer_user_content(requirement: str) -> str:
-    """Get hotfixer user content (no skills, no TASK prefix)."""
-    return requirement
+
 
 
 
