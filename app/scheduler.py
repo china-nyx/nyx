@@ -183,61 +183,6 @@ def mark_done(tid: str, result: str = "") -> None:
     _update_index()
 
 
-def resume_parent_if_done(tid: str) -> Optional[str]:
-    """If tid is a done upgrader task, resume its parent.
-
-    Args:
-        tid: The tid to check
-
-    Returns:
-        The parent tid if resumed, None otherwise
-    """
-    parent_tid = _read(tid, "parent_tid")
-    if not parent_tid:
-        return None
-    
-    parent_state = get_state(parent_tid)
-    if parent_state != "upgrade-waiting":
-        return None
-    
-    # Resume parent
-    set_state(parent_tid, "running")
-    logger.info(f"[sched] resumed parent {parent_tid} after upgrader {tid} done")
-    return parent_tid
-
-
-def create_upgrader_task(parent_tid: str, requirement: str) -> str:
-    """Create an upgrader subtask for the given parent task.
-
-    Args:
-        parent_tid: The tid of the parent task that needs upgrading
-        requirement: The upgrade requirement (description of what to change)
-
-    Returns:
-        The tid of the created upgrader task
-    """
-    # Parent goes to upgrade-waiting state
-    set_state(parent_tid, "upgrade-waiting")
-    _write(parent_tid, "upgrader_status", "pending")
-
-    # Create upgrader task with high priority
-    upgrader_tid = _next_tid()
-    tdir = config.task_dir / upgrader_tid
-    ensure_dir(tdir)
-
-    _write(upgrader_tid, "state", "new")
-    _write(upgrader_tid, "priority", "99")  # High priority
-    _write(upgrader_tid, "requirement.md", requirement)
-    _write(upgrader_tid, "parent_tid", parent_tid)
-    _write(upgrader_tid, "upgrade_type", "code")
-
-    _add_active(upgrader_tid)
-    _update_index()
-
-    logger.info(f"[sched] created upgrader {upgrader_tid} for parent {parent_tid}")
-    return upgrader_tid
-
-
 def prepare_task(tid: str) -> Optional[str]:
     """Prepare a task for execution. Returns requirement or None.
 

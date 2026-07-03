@@ -116,8 +116,6 @@ class Agent:
                 return None
             if summary is not None:
                 logger.info(f"[{tid}] {summary[:200]}")
-            # Check if this was a done upgrader task
-            self._check_upgrader_done(tid)
             return summary
         return None
 
@@ -137,35 +135,14 @@ class Agent:
         if not result:
             return "no result yet; will retry"
 
-        # Parse structured response
-        try:
-            parsed = json.loads(result)
-            status = parsed.get("status", "done")
-            content = parsed.get("content", "")
-        except json.JSONDecodeError:
-            # Fallback: treat as plain text
-            status = "done"
-            content = result
-
-        if status == "needs_upgrade":
-            # Create hotfixer subtask and mark parent waiting
-            scheduler.create_upgrader_task(tid, content)
-            return "needs_upgrade"
+        # Treat result as plain text (no structured output)
+        content = result
 
         # No code change — mark done here (executor marks done when restarting)
         scheduler.mark_done(tid, content)
         return "solved"
 
-    def _check_upgrader_done(self, tid: str) -> str:
-        """If tid was a done upgrader, resume parent and schedule it."""
-        from app import scheduler
-        parent_tid = scheduler.resume_parent_if_done(tid)
-        if parent_tid:
-            # Parent is now running, add to active for next tick
-            scheduler._add_active(parent_tid)
-            logger.info(f"[main] scheduled parent {parent_tid} after upgrader")
-            return f"parent {parent_tid} scheduled"
-        return ""
+
 
 
 # ── Main entry point ─────────────────────────────────────────────────
