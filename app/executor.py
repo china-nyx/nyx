@@ -39,8 +39,4 @@ def run(agent_fn, tid: str = None):
     return result
 
 
-def _extract_message(result):
-    """Extract commit message from agent result."""
-    if isinstance(result, str):
-        return result.strip() or "upgrade"
-    return "upgrade"
+
