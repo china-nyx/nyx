@@ -156,7 +156,7 @@ def run_session(llm, executor, *,
     if log_run:
         _write_session_record(sess_path, {
             "type": "run", "tid": tid,
-            "requirement": final_user_content[:500],
+            "requirement": requirement[:500],
             "model": getattr(llm, "model", ""),
             "cwd": str(config.home),
         })
