@@ -35,9 +35,11 @@ You CAN modify NYX's own source code in {repo}/ to solve tasks.
 If you modify NYX's own source code, the executor will automatically restart.
 After restart, your task will be re-executed with the new code.
 
-**IMPORTANT**: Before modifying code, write a memory to document your plan:
-1. Use `write` to save notes to `{cwd}/sandbox/memory.md` or similar
-2. Include: what you're changing, why, and how to test
+**IMPORTANT**: Before modifying code, update your persistent memory:
+1. Read `sandbox/memory/INDEX.md` to understand the memory structure
+2. Use the memory skill to add a journal entry documenting your plan:
+   - What you're changing and why
+   - How to test the changes
 3. Then commit changes with `git add -A && git commit -m '<brief desc>'`
 4. NYX will auto-restart and re-execute the task with new code
 
