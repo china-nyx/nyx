@@ -164,7 +164,7 @@ def run_session(llm, executor, *,
     res = run_agent(llm,
         messages=[
             ChatMessage(role="system", content=system_prompt),
-            ChatMessage(role="user", content=user_content),
+            ChatMessage(role="user", content=""),
         ],
         tool_executor=executor, tools=tools,
         temperature=temperature, on_step=_on_step)
