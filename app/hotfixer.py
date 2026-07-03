@@ -13,4 +13,5 @@ def fix(llm, executor, requirement: str, tid: str = "") -> str:
                        role="hotfixer", tid=tid,
                        system_prompt=system_prompt,
                        user_content=requirement,
-                       temperature=0.5)
+                       temperature=0.5,
+                       use_skills=False)
