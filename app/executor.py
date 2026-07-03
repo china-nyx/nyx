@@ -10,13 +10,8 @@ from sdk.git import Git
 logger = logging.getLogger(__name__)
 
 
-def _re_exec(tid: str = None, result: str = None):
+def _re_exec(tid: str = None):
     """Restart NYX via boot.py. Never returns on success."""
-    if tid:
-        from app import scheduler
-        scheduler.mark_done(tid, result or "")
-        logger.info(f"[executor] marked {tid} done before restart")
-
     boot_py = config.repo / "app" / "boot.py"
     logger.info("[executor] re-execing NYX...")
     os.execv(sys.executable, [sys.executable, str(boot_py)])

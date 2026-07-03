@@ -31,6 +31,16 @@ Everything under {cwd} is YOUR runtime workspace (read-write). Key subdirectorie
 
 You CAN modify NYX's own source code in {repo}/ to solve tasks.
 
+## Self-Modification and Restart
+If you modify NYX's own source code, the executor will automatically restart.
+After restart, your task will be re-executed with the new code.
+
+**IMPORTANT**: Before modifying code, write a memory to document your plan:
+1. Use `write` to save notes to `{cwd}/sandbox/memory.md` or similar
+2. Include: what you're changing, why, and how to test
+3. Then commit changes with `git add -A && git commit -m '<brief desc>'`
+4. NYX will auto-restart and re-execute the task with new code
+
 ## Response
 Return a clear summary of what you did and the result."""
 
