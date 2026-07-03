@@ -166,7 +166,12 @@ def run_session(llm, executor, *,
         tool_executor=executor, tools=tools,
         temperature=temperature, on_step=_on_step)
 
-    out = (res.get("content") or "").strip()
+    # Print thought on a separate line if present
+    thought = res.get("content") or ""
+    if thought:
+        logger.info(f"[thought] {thought}")
+
+    out = thought.strip()
 
     if log_run:
         _write_session_record(sess_path, {"type": "output", "text": out})
