@@ -89,5 +89,5 @@ def get_hotfixer_template(requirement: str) -> str:
 4. Return a summary of what you changed and why
 
 ## Response
-First summarize what you changed, then list changes one line per file.""",
+Return a clear summary of what you did and the result.""",
     )
