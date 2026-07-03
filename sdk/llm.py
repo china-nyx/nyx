@@ -14,6 +14,9 @@ from sdk.schemas import (
     ChatChoice,
     ChatResponseMessage,
     Usage,
+    ResponseFormat,
+    JsonSchema,
+    ToolDefinition,
 )
 
 logger = logging.getLogger(__name__)
@@ -67,7 +70,7 @@ def _prune_tool_output(tool_name: str, content: str, max_chars: int = 8000) -> s
 
 # ── Merged JSON Schema mode ────────────────────────────────────────
 
-def _build_schema(tools: List[Dict], business_schema: Optional[Dict] = None) -> Dict:
+def _build_schema(tools: List[ToolDefinition], business_schema: Optional[Dict] = None) -> Dict:
     """Build a merged JSON Schema encoding both tool calls and business response.
 
     Schema structure:
@@ -83,13 +86,13 @@ def _build_schema(tools: List[Dict], business_schema: Optional[Dict] = None) -> 
     # Build action items from tool definitions
     tool_items = []
     for tool in tools:
-        fn = tool.get("function", {})
-        params = fn.get("parameters", {"type": "object"})
+        fn = tool.function
+        params = fn.parameters
         tool_items.append({
             "type": "object",
             "properties": {
-                "name": {"type": "string", "enum": [fn["name"]]},
-                "args": params,
+                "name": {"type": "string", "enum": [fn.name]},
+                "args": params.model_dump() if hasattr(params, 'model_dump') else params,
             },
             "required": ["name", "args"],
             "additionalProperties": False,
@@ -130,9 +133,9 @@ def _build_schema(tools: List[Dict], business_schema: Optional[Dict] = None) -> 
     }
 
 
-def _extract_schema(response_format: Dict) -> Dict:
-    """Extract inner schema dict from response_format (always json_schema)."""
-    return response_format["json_schema"]["schema"]
+def _extract_schema(response_format: ResponseFormat) -> Dict:
+    """Extract inner schema dict from ResponseFormat."""
+    return response_format.json_schema.schema if response_format.json_schema else {}
 
 
 def _parse_response(raw_text: str) -> ChatCompletionResponse:
@@ -239,8 +242,8 @@ class LLM:
         raise last_err
 
     def chat(self, messages: list[ChatMessage], *, temperature: float = 0.6,
-             max_tokens: int = 2048, tools: List[Dict] = None,
-             response_format: Optional[Dict] = None) -> ChatCompletionResponse:
+             max_tokens: int = 2048, tools: List[ToolDefinition] = None,
+             response_format: Optional[ResponseFormat] = None) -> ChatCompletionResponse:
         """Non-streaming chat completion.
 
         When both ``tools`` and ``response_format`` are present, enters
