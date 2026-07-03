@@ -153,7 +153,7 @@ def run_session(llm, executor, *,
 
     _on_step = make_on_step(role, tid, sess_path=sess_path)
 
-    # Add skills index to user_content if enabled
+    # Add skills index and user prefix to user_content if enabled
     final_user_content = user_content
     if use_skills:
         from sdk.skills import scan_skills
