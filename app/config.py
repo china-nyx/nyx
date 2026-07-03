@@ -3,7 +3,18 @@ import json
 import os
 from pathlib import Path
 
+from dataclasses import dataclass
 from pydantic import BaseModel, Field, field_validator
+
+
+@dataclass(frozen=True)
+class CompactionSettings:
+    """Compaction behaviour knobs. Mirrors pi's CompactionSettings shape."""
+
+    enabled: bool = True
+    reserve_tokens: int = 16384       # trigger when remaining < this many tokens
+    keep_recent_tokens: int = 20000   # keep this many recent tokens untouched
+    summarize_max_tokens: int = 1024  # max tokens for the summarization LLM call
 
 
 class Config(BaseModel):
@@ -24,12 +35,20 @@ class Config(BaseModel):
     llm_timeout: int = 300
 
     # ── logging ────────────────────────────────────────────────
-    keep_sessions: int = 300
     log_keep_days: int = 7
+
+    # ── session retention ──────────────────────────────────────
+    keep_sessions: int = 300
 
     # ── agent behavior ─────────────────────────────────────────
     req_retry_sec: int = 25           # seconds between retry attempts for same task
     self_reflect_sec: int = 3600      # seconds between self-reflection cycles
+
+    # ── compaction ─────────────────────────────────────────────
+    compaction_settings: CompactionSettings = Field(
+        default_factory=CompactionSettings,
+        description="Context compaction behaviour",
+    )
 
     # ── validation ─────────────────────────────────────────────
     @field_validator("home")
@@ -88,6 +107,7 @@ class Config(BaseModel):
 
         llm = raw.get("llm", {})
         log_ = raw.get("log", {})
+        session_ = raw.get("session", {})
 
         return cls(
             repo=repo,
@@ -96,11 +116,24 @@ class Config(BaseModel):
             llm_model=llm.get("model", ""),
             llm_api_key=llm.get("api_key", ""),
             llm_timeout=llm.get("timeout", 300),
-            keep_sessions=log_.get("keep_sessions", 300),
+            keep_sessions=session_.get("keep_sessions", 300),
             log_keep_days=log_.get("keep_days", 7),
             req_retry_sec=int(os.environ.get("NYX_REQ_RETRY_SEC", "25")),
             self_reflect_sec=int(os.environ.get("NYX_SELF_REFLECT_SEC", "3600")),
+            **cls._parse_compaction(raw.get("compaction", {})),
         )
+
+    @classmethod
+    def _parse_compaction(cls, raw: dict) -> dict:
+        """Parse the optional ``compaction`` section of settings.json."""
+        return {
+            "compaction_settings": CompactionSettings(
+                enabled=bool(raw.get("enabled", True)),
+                reserve_tokens=int(raw.get("reserve_tokens", 16384)),
+                keep_recent_tokens=int(raw.get("keep_recent_tokens", 20000)),
+                summarize_max_tokens=int(raw.get("summarize_max_tokens", 1024)),
+            )
+        }
 
 
 # Singleton — set once by boot.py before any other app module is imported.

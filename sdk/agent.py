@@ -12,6 +12,7 @@ from collections import deque
 from typing import Callable, Dict, List, Optional, Set
 
 from sdk.compaction import (
+    CompactionSettings,
     clamp_max_tokens,
     estimate_context_tokens,
     extract_file_paths,
@@ -72,13 +73,19 @@ def _msgs_to_dicts(msgs: list[ChatMessage]) -> list[dict]:
     return [m.model_dump(exclude_none=True) for m in msgs]
 
 
+# Default context window when the caller doesn't supply one.
+_DEFAULT_CONTEXT_WINDOW = 128_000
+
+
 def run_agent(client: ChatClient, messages: list[ChatMessage],
               tool_executor: Callable[[str, Dict], tuple], *,
               temperature: float = 0.5,
               on_step: Optional[Callable] = None,
               tools: List[Dict] = None,
               terminal_tools: Optional[set] = None,
-              response_format: Optional[Dict] = None) -> Dict:
+              response_format: Optional[Dict] = None,
+              compaction_settings: CompactionSettings = None,
+              context_window: int = _DEFAULT_CONTEXT_WINDOW) -> Dict:
     """Tool-calling agent loop. tool_executor(name, args) -> (result_str, is_error).
 
     Runs until the model returns a text response (no tool calls).  When the message
@@ -90,6 +97,8 @@ def run_agent(client: ChatClient, messages: list[ChatMessage],
     tools = tools or ALL_TOOLS
     terminal = set(terminal_tools or [])
     _response_format = response_format
+    _compaction = compaction_settings or CompactionSettings()
+    _context_window = context_window
     msgs = list(messages)
     _initial_len = len(msgs)
 
@@ -106,7 +115,7 @@ def run_agent(client: ChatClient, messages: list[ChatMessage],
 
     while True:
         _context_tokens = estimate_context_tokens(_msgs_to_dicts(msgs))
-        _clamped_max = clamp_max_tokens(4096, _context_tokens)
+        _clamped_max = clamp_max_tokens(4096, _context_tokens, _context_window)
 
         resp = client.chat(
             msgs,
@@ -186,8 +195,10 @@ def run_agent(client: ChatClient, messages: list[ChatMessage],
                 return _assistant_message(str(res)[:300])
 
         # ── Context compaction ────────────────────────────────────────
-        if should_compact(estimate_context_tokens(_msgs_to_dicts(msgs)), len(msgs)):
-            _cut_idx = find_cut_point(_msgs_to_dicts(msgs), _initial_len)
+        if should_compact(estimate_context_tokens(_msgs_to_dicts(msgs)), len(msgs),
+                          _context_window, _compaction):
+            _cut_idx = find_cut_point(_msgs_to_dicts(msgs), _initial_len,
+                                      _compaction.keep_recent_tokens)
             compactable = msgs[_initial_len:_cut_idx]
             if compactable:
                 _system_msg = ""
@@ -195,6 +206,7 @@ def run_agent(client: ChatClient, messages: list[ChatMessage],
                     _system_msg = msgs[0].content or ""
 
                 summary_text = summarize(client, _system_msg, _msgs_to_dicts(compactable),
+                                         _compaction,
                                          previous_summary=_previous_summary)
                 _previous_summary = summary_text
                 logger.info(f"[agent] compaction: summarized {len(compactable)} messages -> {len(summary_text)} chars")

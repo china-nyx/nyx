@@ -134,9 +134,20 @@ All runtime config is in `config/settings.json`. Env vars override file values:
         "timeout": 300
     },
     "log": {
+        "keep_days": 7
+    },
+    "session": {
         "keep_sessions": 300
+    },
+    "compaction": {
+        "enabled": true,
+        "reserve_tokens": 16384,
+        "keep_recent_tokens": 20000,
+        "summarize_max_tokens": 1024
     }
 }
 ```
+
+The `compaction` section controls context-window compaction behaviour. All keys are optional — the defaults shown above will be used when the section is omitted.
 
 See `app/config.py` for all keys and env var overrides.

@@ -1,16 +1,28 @@
 """Context compaction — token estimation, cut-point detection, LLM-based summarization.
 
-Pure functions. No dependency on core/config or sdk/tools.
+Pure functions. No dependency on app/config or sdk/tools.
+All behaviour knobs are passed explicitly via ``CompactionSettings``.
 """
 import json
-import os
+from dataclasses import dataclass
 from typing import Dict, List, Optional, Set
 
-# ── Config (all env-overridable) ────────────────────────────────────
-_CONTEXT_WINDOW = int(os.environ.get("_CONTEXT_WINDOW", "128000"))
-_COMPACTION_RESERVE = int(os.environ.get("_COMPACTION_RESERVE", "16384"))
-_KEEP_RECENT_TOKENS = int(os.environ.get("_KEEP_RECENT_TOKENS", "20000"))
-_COMPACT_SUMMARIZE_TOKENS = int(os.environ.get("_COMPACT_SUMMARIZE_TOKENS", "1024"))
+
+# ── Settings (injected by caller) ───────────────────────────────────
+
+@dataclass(frozen=True)
+class CompactionSettings:
+    """Knobs controlling compaction behaviour.
+
+    Mirrors pi's ``CompactionSettings`` shape so the same values can be
+    understood across both codebases.
+    """
+
+    enabled: bool = True
+    reserve_tokens: int = 16384       # trigger when remaining < this many tokens
+    keep_recent_tokens: int = 20000   # keep this many recent tokens untouched
+    summarize_max_tokens: int = 1024  # max tokens for the summarization LLM call
+
 
 # ── Token estimation ────────────────────────────────────────────────
 
@@ -32,29 +44,33 @@ def estimate_context_tokens(messages: List[Dict]) -> int:
     return total
 
 
-def clamp_max_tokens(requested: int, context_tokens: int) -> int:
+def clamp_max_tokens(requested: int, context_tokens: int, context_window: int) -> int:
     """Clamp max_tokens so the total (context + output) stays within the window.
 
     Leaves a 4096-token safety margin beyond the reserve to avoid OOM / truncation.
     Returns at least 256 so we never request zero tokens.
     """
-    headroom = _CONTEXT_WINDOW - context_tokens - 4096
+    headroom = context_window - context_tokens - 4096
     return max(256, min(requested, headroom))
 
 
-def should_compact(context_tokens: int, msg_count: int) -> bool:
+def should_compact(context_tokens: int, msg_count: int,
+                   context_window: int, settings: CompactionSettings) -> bool:
     """Check if compaction should trigger based on token count or message count."""
+    if not settings.enabled:
+        return False
     _COMPACT_AT = 60
     return (
-        context_tokens > (_CONTEXT_WINDOW - _COMPACTION_RESERVE)
+        context_tokens > (context_window - settings.reserve_tokens)
         or msg_count > _COMPACT_AT
     )
 
 
-def find_cut_point(messages: List[Dict], initial_len: int) -> int:
-    """Find the cut point that keeps approximately _KEEP_RECENT_TOKENS of recent messages.
+def find_cut_point(messages: List[Dict], initial_len: int,
+                   keep_recent_tokens: int) -> int:
+    """Find the cut point that keeps approximately *keep_recent_tokens* of recent messages.
 
-    Walks backwards from end, accumulating tokens, stops when >= _KEEP_RECENT_TOKENS.
+    Walks backwards from end, accumulating tokens, stops when >= keep_recent_tokens.
     Returns the index to start keeping from (everything before this gets compacted).
     """
     cut_idx = initial_len
@@ -65,7 +81,7 @@ def find_cut_point(messages: List[Dict], initial_len: int) -> int:
             fn = tc.get("function", {})
             msg_tokens += estimate_tokens(fn.get("arguments", "") or "")
         accumulated += msg_tokens
-        if accumulated >= _KEEP_RECENT_TOKENS:
+        if accumulated >= keep_recent_tokens:
             cut_idx = i
             break
     return cut_idx
@@ -207,7 +223,7 @@ class ChatClient:
 
 
 def summarize(client: ChatClient, system_msg: str, compactable: List[Dict],
-              previous_summary: str = "") -> str:
+              settings: CompactionSettings, previous_summary: str = "") -> str:
     """Use the LLM to produce a structured summary of compacted tool exchanges.
 
     Serializes messages to plain text (not raw message objects) so the model
@@ -235,7 +251,7 @@ def summarize(client: ChatClient, system_msg: str, compactable: List[Dict],
             {"role": "user", "content": "\n\n".join(user_parts)},
         ],
         temperature=0.3,
-        max_tokens=_COMPACT_SUMMARIZE_TOKENS,
+        max_tokens=settings.summarize_max_tokens,
     )
     return (resp.choices[0].message.content or "").strip()
 
@@ -243,6 +259,7 @@ def summarize(client: ChatClient, system_msg: str, compactable: List[Dict],
 # ── Full compaction step ────────────────────────────────────────────
 
 def compact_step(client: ChatClient, messages: List[Dict], initial_len: int,
+                 context_window: int, settings: CompactionSettings,
                  previous_summary: str = "", dup_count: int = 0) -> Optional[List[Dict]]:
     """Execute one compaction cycle. Returns new messages list, or None if no compaction needed.
 
@@ -251,10 +268,10 @@ def compact_step(client: ChatClient, messages: List[Dict], initial_len: int,
     Use get_last_summary() to extract it from the result.
     """
     context_tokens = estimate_context_tokens(messages)
-    if not should_compact(context_tokens, len(messages)):
+    if not should_compact(context_tokens, len(messages), context_window, settings):
         return None
 
-    cut_idx = find_cut_point(messages, initial_len)
+    cut_idx = find_cut_point(messages, initial_len, settings.keep_recent_tokens)
     compactable = messages[initial_len:cut_idx]
     if not compactable:
         return None
@@ -265,7 +282,7 @@ def compact_step(client: ChatClient, messages: List[Dict], initial_len: int,
         system_msg = messages[0].get("content", "") or ""
 
     # Generate summary
-    summary_text = summarize(client, system_msg, compactable, previous_summary)
+    summary_text = summarize(client, system_msg, compactable, settings, previous_summary)
 
     # File operation tracking
     file_paths = extract_file_paths(compactable)
