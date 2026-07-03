@@ -44,26 +44,8 @@ class Agent:
         self.ftools = Tools(cwd=config.home)
         self._last_try = {}  # tid -> last tick timestamp
         self.REQ_RETRY_SEC = int(os.environ.get("NYX_REQ_RETRY_SEC", "25"))
-        self._last_self_reflect = self._load_last_self_reflect()
+
         self.SELF_REFLECT_INTERVAL = int(os.environ.get("NYX_SELF_REFLECT_SEC", "3600"))
-
-    def _load_last_self_reflect(self) -> float:
-        """Load last self-reflection timestamp from disk."""
-        p = config.task_dir / ".last_self_reflect"
-        if p.exists():
-            try:
-                return float(p.read_text(encoding="utf-8"))
-            except Exception:
-                pass
-        return 0.0
-
-    def _save_last_self_reflect(self):
-        """Save last self-reflection timestamp to disk."""
-        p = config.task_dir / ".last_self_reflect"
-        try:
-            p.write_text(str(self._last_self_reflect), encoding="utf-8")
-        except Exception:
-            pass
 
     def _executor(self, name, args):
         return self.ftools.execute(name, args)
@@ -72,28 +54,8 @@ class Agent:
 
     def _maybe_self_reflect(self):
         """If enough time has passed since last self-reflection, drop an inbox file."""
-        now = time.time()
-        if self.SELF_REFLECT_INTERVAL <= 0 or now - self._last_self_reflect < self.SELF_REFLECT_INTERVAL:
-            return False
-        from app import scheduler
-        for tid, info in scheduler.scan_tasks():
-            src = info.get("source_file", "") or ""
-            if src == "self-reflect" and info["state"] in ("new", "running"):
-                logger.info(f"[agent] skipping self-reflect — {tid} already active ({info['state']})")
-                return False
-        self._last_self_reflect = now
-        self._save_last_self_reflect()
-        skill_file = config.skills_dir / "self-reflect" / "SKILL.md"
-        if not skill_file.exists():
-            skill_file = config.repo / "skills" / "self-reflect" / "SKILL.md"
-        if not skill_file.exists():
-            logger.warning("[agent] self-reflect SKILL.md not found — skipping")
-            return False
-        requirement = skill_file.read_text(encoding='utf-8')
-        stamp = time.strftime("%Y-%m-%d-%H", time.localtime())
-        inbox_file = config.inbox_dir / f"10-self-reflect-{stamp}.md"
-        inbox_file.write_text(requirement, encoding="utf-8")
-        logger.info(f"[agent] dropped self-reflect inbox file {inbox_file.name}")
+        from app import self_reflect
+        return self_reflect.maybe_drop(self.SELF_REFLECT_INTERVAL)
 
     # ── Tick loop ───────────────────────────────────────
 
