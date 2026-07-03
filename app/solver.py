@@ -4,15 +4,12 @@ from __future__ import annotations
 
 Runs an LLM session. If it modifies repo code, executor detects dirty → commit + restart.
 
-Uses merged JSON Schema mode with response_format for structured output:
-{"status": "done" | "needs_upgrade", "content": "..."}
-
-Returns assistant text from 'content' field."""
+Returns assistant text directly (no structured output)."""
 
 from app.config import config
 from app.session import run_session
 from sdk.skills import scan_skills
-from sdk.schemas import ResponseFormat, JsonSchema, ToolDefinition
+
 
 
 SYSTEM_TEMPLATE = """\
@@ -65,56 +62,17 @@ def _build_system_prompt() -> str:
     )
 
 
-SOLVER_RESPONSE_SCHEMA = {
-    "type": "json_schema",
-    "json_schema": {
-        "name": "solver_response",
-        "strict": True,
-        "schema": {
-            "type": "object",
-            "properties": {
-                "status": {
-                    "type": "string",
-                    "enum": ["done", "needs_upgrade"],
-                    "description": (
-                        "'done' if the task is fully complete. "
-                        "'needs_upgrade' if NYX's own code must be changed to continue.")
-                },
-                "content": {
-                    "type": "string",
-                    "description": (
-                        "If done: the full result text for the owner. "
-                        "If needs_upgrade: detailed description of what capability is missing and why it is needed.")
-                }
-            },
-            "required": ["status", "content"],
-            "additionalProperties": False
-        }
-    }
-}
-
-
 def solve(llm, executor, tools, requirement, tid=""):
-    """Returns assistant content from structured response."""
+    """Returns assistant text directly."""
     skill_index = scan_skills(config.repo / "skills", config.skills_dir)
     skill_prefix = (skill_index + "\n\n" if skill_index else "")
     user = skill_prefix + f"TASK:\n{requirement}"
-
-    response_format = ResponseFormat(
-        type="json_schema",
-        json_schema=JsonSchema(
-            name="solver_response",
-            strict=True,
-            schema=SOLVER_RESPONSE_SCHEMA["json_schema"]["schema"]
-        )
-    )
 
     out = run_session(llm, executor,
                       role="solver", tid=tid,
                       system_prompt=_build_system_prompt(),
                       user_content=user,
                       tools=tools,
-                      response_format=response_format,
                       temperature=0.7,
                       prune_sessions=True, log_run=True)
 
