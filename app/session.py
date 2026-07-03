@@ -120,7 +120,8 @@ def run_session(llm, executor, *,
                 system_prompt: str, user_content: str,
                 tools: List[Dict] = None, temperature: float = 0.5,
                 prune_sessions: bool = False,
-                log_run: bool = False) -> str:
+                log_run: bool = False,
+                use_skills: bool = True) -> str:
     """Run an agent session with shared setup (session file, on_step, run_agent).
 
     Returns the assistant's final text content.
@@ -134,6 +135,7 @@ def run_session(llm, executor, *,
         temperature: model temperature
         prune_sessions: if True, prune old session files beyond KEEP_SESSIONS
         log_run: if True, write a "run" record at start and "output" record at end
+        use_skills: if True, prepend skills index to user_content
     """
     from sdk.agent import run_agent
 
@@ -150,10 +152,18 @@ def run_session(llm, executor, *,
 
     _on_step = make_on_step(role, tid, sess_path=sess_path)
 
+    # Add skills index to user_content if enabled
+    final_user_content = user_content
+    if use_skills:
+        from sdk.skills import scan_skills
+        skill_index = scan_skills(config.repo / "skills", config.skills_dir)
+        skill_prefix = (skill_index + "\n\n" if skill_index else "")
+        final_user_content = skill_prefix + f"TASK:\n{user_content}"
+
     if log_run:
         _write_session_record(sess_path, {
             "type": "run", "tid": tid,
-            "requirement": user_content[:500],
+            "requirement": final_user_content[:500],
             "model": getattr(llm, "model", ""),
             "cwd": str(config.home),
         })
@@ -161,7 +171,7 @@ def run_session(llm, executor, *,
     res = run_agent(llm,
         messages=[
             ChatMessage(role="system", content=system_prompt),
-            ChatMessage(role="user", content=user_content),
+            ChatMessage(role="user", content=final_user_content),
         ],
         tool_executor=executor, tools=tools,
         temperature=temperature, on_step=_on_step)
