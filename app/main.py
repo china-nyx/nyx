@@ -45,17 +45,14 @@ class Agent:
         self._last_try = {}  # tid -> last tick timestamp
         self.REQ_RETRY_SEC = int(os.environ.get("NYX_REQ_RETRY_SEC", "25"))
 
-        self.SELF_REFLECT_INTERVAL = int(os.environ.get("NYX_SELF_REFLECT_SEC", "3600"))
 
     def _executor(self, name, args):
         return self.ftools.execute(name, args)
 
     # ── Self-reflection ───────────────────────────────────────
 
-    def _maybe_self_reflect(self):
         """If enough time has passed since last self-reflection, drop an inbox file."""
         from app import self_reflect
-        return self_reflect.maybe_drop(self.SELF_REFLECT_INTERVAL)
 
     # ── Tick loop ───────────────────────────────────────
 
@@ -66,7 +63,6 @@ class Agent:
         if not _running:
             return None
 
-        self._maybe_self_reflect()
         scheduler.ingest_inbox()
 
         picked = scheduler.pick_next_task()

@@ -28,25 +28,26 @@ def _save_timestamp(ts: float):
         pass
 
 
+import os
+
+INTERVAL_SEC = int(os.environ.get("NYX_SELF_REFLECT_SEC", "3600"))
+
 _last: float = _load_timestamp()
 
 
-def maybe_drop(interval_sec: int) -> bool:
+def maybe_drop() -> bool:
     """Drop a self-reflect inbox file if enough time has passed.
-
-    Args:
-        interval_sec: Minimum seconds between self-reflections (0 to disable)
 
     Returns:
         True if a file was dropped, False otherwise
     """
     global _last
 
-    if interval_sec <= 0:
+    if INTERVAL_SEC <= 0:
         return False
 
     now = time.time()
-    if now - _last < interval_sec:
+    if now - _last < INTERVAL_SEC:
         return False
 
     # Dedup: skip if self-reflect task is already pending/running
