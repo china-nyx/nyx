@@ -92,9 +92,9 @@ def _build_schema(tools: List[ToolDefinition], business_schema: Optional[Dict] =
             "type": "object",
             "properties": {
                 "name": {"type": "string", "enum": [fn.name]},
-                "arguments": params.model_dump() if hasattr(params, 'model_dump') else params,
+                "args": params.model_dump() if hasattr(params, 'model_dump') else params,
             },
-            "required": ["name", "arguments"],
+            "required": ["name", "args"],
             "additionalProperties": False,
         })
 
@@ -166,7 +166,7 @@ def _parse_response(raw_text: str) -> ChatCompletionResponse:
                 "type": "function",
                 "function": {
                     "name": tool["name"],
-                    "arguments": json.dumps(tool.get("arguments", {}), ensure_ascii=False)
+                    "args": json.dumps(tool.get("args", {}), ensure_ascii=False)
                 }
             })
         content = parsed.get("thought", "")
