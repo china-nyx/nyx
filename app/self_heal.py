@@ -21,6 +21,6 @@ def run(exc: Exception) -> None:
                 api_key=config.llm_api_key, timeout=config.llm_timeout)
     tools = Tools(cwd=config.home)
     try:
-        executor.run(lambda: hotfixer.update(llm, tools.execute, requirement))
+        executor.run(lambda: hotfixer.fix(llm, tools.execute, requirement))
     except Exception:
         logger.exception("self-heal failed — cannot recover")
