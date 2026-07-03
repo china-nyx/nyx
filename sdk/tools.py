@@ -1,7 +1,7 @@
 """Core-owned tool executor (file/shell), rooted at a working dir.
 
 Owned by the core (not the app). The solver agent uses it for task-solving;
-code upgrades are handled by the evolver FSM phase (app/evolver.py).
+code changes are detected by executor (app/executor.py) which restarts on HEAD change.
 
 4 base tools: bash, read, write, edit — everything else is a skill.
 """
@@ -56,7 +56,7 @@ class Tools:
         if p.is_dir():
             return f"{p} is a directory; use ls", True
         text = p.read_text(encoding="utf-8", errors="replace")
-        # Slice big files by line: offset (start line, 1-based) + limit (number of lines); defaults to reading the whole file (capped at 64KB)
+        # Slice big files by line: offset (start line, 1-based) + limit (number of lines); defaults to reading the whole file (capped at 65536 chars)
         off = int(args.get("offset", 0) or 0)
         lim = int(args.get("limit", 0) or 0)
         if off or lim:
@@ -89,7 +89,6 @@ class Tools:
         atomic_write_text(p, content.replace(old, args.get("new_text", ""), 1))
         return "edited", False
 # ── Tool schemas (4 base tools; everything else is a skill) ───────────
-# Code upgrades are handled by the evolver FSM phase.
 from sdk.schemas import ToolDefinition, ToolFunction, ToolParameter
 
 _ALL_TOOL_DEFS = [

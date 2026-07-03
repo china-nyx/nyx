@@ -41,11 +41,17 @@ def _make_args_key(tool_name: str, args: dict) -> tuple:
 
 
 class ChatClient:
-    """Minimal interface required by run_agent to talk to the LLM."""
+    """Minimal interface required by run_agent to talk to the LLM.
+
+    Implemented by sdk.llm.LLM.  The chat() method must accept the same
+    keyword arguments that run_agent passes: temperature, max_tokens,
+    tools (list of tool definition dicts), and response_format.
+    """
     model: str
 
     def chat(self, messages: list[ChatMessage], *, temperature: float,
-             max_tokens: int, response_format: Optional[Dict] = None) -> ChatCompletionResponse:
+             max_tokens: int, tools: Optional[List[Dict]] = None,
+             response_format: Optional[Dict] = None) -> ChatCompletionResponse:
         ...
 
 

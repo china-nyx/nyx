@@ -10,11 +10,11 @@ from pathlib import Path
 # Add repo root to path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from sdk.llm import (
-    _serialize_conversation,
-    _COMPACT_SYSTEM,
-    _COMPACT_PROMPT,
-    _COMPACT_UPDATE_PROMPT,
+from sdk.compaction import (
+    serialize_conversation as _serialize_conversation,
+    COMPACT_SYSTEM as _COMPACT_SYSTEM,
+    COMPACT_PROMPT as _COMPACT_PROMPT,
+    COMPACT_UPDATE_PROMPT as _COMPACT_UPDATE_PROMPT,
     _TOOL_RESULT_MAX_CHARS,
 )
 

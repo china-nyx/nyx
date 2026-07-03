@@ -41,12 +41,10 @@ def maybe_drop() -> bool:
     """
     global _last
 
-    from app.config import config
     if config.self_reflect_sec <= 0:
         return False
 
     now = time.time()
-    from app.config import config
     if now - _last < config.self_reflect_sec:
         return False
 

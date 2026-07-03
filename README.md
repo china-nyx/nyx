@@ -28,8 +28,10 @@ crash ─▶ boot catches exception ─▶ evolve(hotfixer) → fix code → res
 ### Source Repository
 
 ```
-app/        — boot, config, evolver, hotfixer, log, main, scheduler, self_heal, session, solver
-sdk/        — agent.py (loop), compaction.py, llm.py, tools.py, fs.py, git.py, skills.py
+app/        — boot, config, executor, hotfixer, log, main, prompts,
+              scheduler, self_heal, self_reflect, session, solver
+sdk/        — agent.py (loop), compaction.py, llm.py, tools.py, fs.py,
+              git.py, skills.py, schemas.py
 skills/     — built-in skills (loaded at runtime from source repo)
 deploy/     — systemd unit template
 tests/      — test suite
@@ -86,8 +88,8 @@ To customize what self-reflect audits, place your own SKILL.md at `skills/self-r
 
 ## Running it
 
-NYX is pure Python (standard library) managed with [uv](https://github.com/astral-sh/uv),
-and talks to any OpenAI-compatible model server (e.g. a local `llama-server`).
+NYX is a Python project managed with [uv](https://github.com/astral-sh/uv)
+(dependencies: pydantic) and talks to any OpenAI-compatible model server (e.g. a local `llama-server`).
 
 ```bash
 # Create config/settings.json in your working directory first:
@@ -150,4 +152,13 @@ All runtime config is in `config/settings.json`. Env vars override file values:
 
 The `compaction` section controls context-window compaction behaviour. All keys are optional — the defaults shown above will be used when the section is omitted.
 
-See `app/config.py` for all keys and env var overrides.
+### Environment Variable Overrides
+
+The following settings can be overridden via environment variables:
+
+| Env Var | Setting | Default |
+|---------|---------|----------|
+| `NYX_REQ_RETRY_SEC` | seconds between retry attempts for same task | 25 |
+| `NYX_SELF_REFLECT_SEC` | seconds between self-reflection cycles | 3600 |
+
+See `app/config.py` for all keys and their defaults.

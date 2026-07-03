@@ -128,13 +128,12 @@ def run_session(llm, executor, *,
     Args:
         role: "solver" or "hotfixer"
         tid: task id
-        system_prompt: system message content
-        user_content: user message content
+        system_prompt: system message content (includes skills + requirement)
+        requirement: original requirement text (logged in session file)
         tools: tool definitions (default: ALL_TOOLS)
         temperature: model temperature
         prune_sessions: if True, prune old session files beyond KEEP_SESSIONS
         log_run: if True, write a "run" record at start and "output" record at end
-        use_skills: if True, prepend skills index to user_content
     """
     from sdk.agent import run_agent
 
@@ -151,8 +150,6 @@ def run_session(llm, executor, *,
 
     _on_step = make_on_step(role, tid, sess_path=sess_path)
 
-    # user_content is the requirement, no skills prefix
-
     if log_run:
         _write_session_record(sess_path, {
             "type": "run", "tid": tid,
@@ -162,10 +159,7 @@ def run_session(llm, executor, *,
         })
 
     res = run_agent(llm,
-        messages=[
-            ChatMessage(role="system", content=system_prompt),
-            ChatMessage(role="user", content=""),
-        ],
+        messages=[ChatMessage(role="system", content=system_prompt)],
         tool_executor=executor, tools=tools,
         temperature=temperature, on_step=_on_step,
         compaction_settings=config.compaction_settings)

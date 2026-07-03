@@ -3,18 +3,10 @@ import json
 import os
 from pathlib import Path
 
-from dataclasses import dataclass
 from pydantic import BaseModel, Field, field_validator
 
-
-@dataclass(frozen=True)
-class CompactionSettings:
-    """Compaction behaviour knobs. Mirrors pi's CompactionSettings shape."""
-
-    enabled: bool = True
-    reserve_tokens: int = 16384       # trigger when remaining < this many tokens
-    keep_recent_tokens: int = 20000   # keep this many recent tokens untouched
-    summarize_max_tokens: int = 1024  # max tokens for the summarization LLM call
+# Shared with sdk/compaction.py — single source of truth for compaction knobs.
+from sdk.compaction import CompactionSettings
 
 
 class Config(BaseModel):

@@ -41,11 +41,30 @@ NYX's upgrade flow uses a simplified direct modification approach:
 
 ```
 app/
-├── solver.py      ← Solve tasks, may modify code
-├── hotfixer.py    ← Hotfix, modifies code
-├── executor.py    ← Run + restart
-├── scheduler.py   ← Task management
-└── main.py        ← Main entry
+├── boot.py         ← Bootstrap, self-heal on crash
+├── config.py       ← Settings from config/settings.json
+├── executor.py     ← Run agent session, restart on HEAD change
+├── hotfixer.py     ← Mini code-fix agent (4 tools only)
+├── log.py          ← Logging setup
+├── main.py         ← Agent tick loop (self-reflect, scheduler, executor)
+├── prompts.py      ← System prompt templates for solver/hotfixer
+├── scheduler.py    ← Task lifecycle management
+├── self_heal.py    ← Crash recovery via hotfixer
+├── self_reflect.py ← Periodic self-audit task generation
+├── session.py      ← Shared session runner (JSONL logging, on_step)
+└── solver.py       ← Solve tasks with tools + skills
+```
+
+```
+sdk/
+├── agent.py        ← Tool-calling loop, context compaction
+├── compaction.py   ← Token estimation, summarization
+├── fs.py           ├── Filesystem helpers (ensure_dir, atomic_write)
+├── git.py          ├── Git wrapper (short, dirty, commit)
+├── llm.py          ├── OpenAI-compatible HTTP client
+├── schemas.py      ├── Pydantic models for LLM requests/responses
+├── skills.py       ├── Skill discovery and scanning
+└── tools.py        └── 4 base tools: bash, read, write, edit
 ```
 
 ## Agent Communication

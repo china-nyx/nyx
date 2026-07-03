@@ -63,19 +63,22 @@ grep -rn "TODO\|FIXME\|HACK\|XXX\|STUB" . --include="*.py" | grep -v ".venv"
 # Quick scan for modules missing docstrings
 python3 -c "
 import ast, sys, os
-for root, dirs, files in os.walk('src'):
-    dirs[:] = [d for d in dirs if d != '.venv']
-    for f in files:
-        if f.endswith('.py') and not f.startswith('__'):
-            path = os.path.join(root, f)
-            with open(path) as fh:
-                try:
-                    tree = ast.parse(fh.read())
-                    has_doc = (tree.body and isinstance(tree.body[0], ast.Expr)
-                              and isinstance(tree.body[0].value, (ast.Str, ast.Constant)))
-                    if not has_doc:
-                        print(f'Missing module docstring: {path}')
-                except: pass
+for src_dir in ['app', 'sdk']:
+    if not os.path.isdir(src_dir):
+        continue
+    for root, dirs, files in os.walk(src_dir):
+        dirs[:] = [d for d in dirs if d != '.venv' and d != '__pycache__']
+        for f in files:
+            if f.endswith('.py') and not f.startswith('__'):
+                path = os.path.join(root, f)
+                with open(path) as fh:
+                    try:
+                        tree = ast.parse(fh.read())
+                        has_doc = (tree.body and isinstance(tree.body[0], ast.Expr)
+                                  and isinstance(tree.body[0].value, (ast.Str, ast.Constant)))
+                        if not has_doc:
+                            print(f'Missing module docstring: {path}')
+                    except: pass
 " 2>/dev/null
 ```
 
@@ -84,28 +87,31 @@ for root, dirs, files in os.walk('src'):
 ```bash
 # Quick check for obviously unused imports (heuristic)
 python3 -c "
-import ast, os
-for root, dirs, files in os.walk('src'):
-    dirs[:] = [d for d in dirs if d != '.venv']
-    for f in files:
-        if f.endswith('.py') and not f.startswith('__'):
-            path = os.path.join(root, f)
-            with open(path) as fh:
-                content = fh.read()
-            try:
-                tree = ast.parse(content)
-                imports = set()
-                for node in ast.walk(tree):
-                    if isinstance(node, ast.Import):
-                        for alias in node.names:
-                            imports.add(alias.name.split('.')[0])
-                    elif isinstance(node, ast.ImportFrom) and node.module:
-                        imports.add(node.module.split('.')[0])
-                used = set(re.findall(r'\b[a-zA-Z_]\w*\b', content))
-                unused = imports - used
-                if unused:
-                    print(f'{path}: possibly unused: {unused}')
-            except: pass
+import ast, os, re
+for src_dir in ['app', 'sdk']:
+    if not os.path.isdir(src_dir):
+        continue
+    for root, dirs, files in os.walk(src_dir):
+        dirs[:] = [d for d in dirs if d != '.venv' and d != '__pycache__']
+        for f in files:
+            if f.endswith('.py') and not f.startswith('__'):
+                path = os.path.join(root, f)
+                with open(path) as fh:
+                    content = fh.read()
+                try:
+                    tree = ast.parse(content)
+                    imports = set()
+                    for node in ast.walk(tree):
+                        if isinstance(node, ast.Import):
+                            for alias in node.names:
+                                imports.add(alias.name.split('.')[0])
+                        elif isinstance(node, ast.ImportFrom) and node.module:
+                            imports.add(node.module.split('.')[0])
+                    used = set(re.findall(r'\b[a-zA-Z_]\w*\b', content))
+                    unused = imports - used
+                    if unused:
+                        print(f'{path}: possibly unused: {unused}')
+                except: pass
 " 2>/dev/null
 ```
 
@@ -115,16 +121,19 @@ for root, dirs, files in os.walk('src'):
 # Try importing each top-level package to catch broken dependencies early
 python3 -c "
 import importlib, os, sys
-for root, dirs, files in os.walk('src'):
-    dirs[:] = [d for d in dirs if d != '.venv']
-    for f in files:
-        if f == '__init__.py':
-            parts = os.path.relpath(root, 'src').split(os.sep)
-            module = '.'.join(parts)
-            try:
-                importlib.import_module(module)
-            except Exception as e:
-                print(f'Import failed for {module}: {e}')
+for src_dir in ['app', 'sdk']:
+    if not os.path.isdir(src_dir):
+        continue
+    for root, dirs, files in os.walk(src_dir):
+        dirs[:] = [d for d in dirs if d != '.venv' and d != '__pycache__']
+        for f in files:
+            if f == '__init__.py':
+                parts = os.path.relpath(root, src_dir).split(os.sep)
+                module = '.'.join(parts) or src_dir
+                try:
+                    importlib.import_module(module)
+                except Exception as e:
+                    print(f'Import failed for {module}: {e}')
 " 2>/dev/null
 ```
 
@@ -209,10 +218,8 @@ For each skill:
 
 ```bash
 # Check if skills reference source files that still exist
-# Check if skills reference repo paths that still exist (manual review)
-    if [ ! -e "$f" ]; then
-        echo "SKILL REFERENCE TO MISSING FILE: $f"
-    fi
+for f in $(grep -roh '[a-z]*/[a-z_]*\.py' skills/ 2>/dev/null | sort -u); do
+    [ ! -e "$f" ] && echo "SKILL REFERENCE TO MISSING FILE: $f"
 done
 ```
 
@@ -385,7 +392,7 @@ The writable runtime path is `skills/self-reflect/SKILL.md` (under cwd). The bui
    write path=skills/self-reflect/SKILL.md content=<improved full text>
    ```
 3. **If it already exists**: use `edit` to modify it in place
-4. Next self-reflect cycle automatically uses the updated version (agent.py reads runtime first)
+4. Next self-reflect cycle automatically uses the updated version (sdk/skills.py scans runtime dir first, shadowing built-in)
 
 **What to improve:**
 - Add new audit steps for areas you discovered need checking

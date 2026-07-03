@@ -51,8 +51,10 @@ class Agent:
 
     # ── Self-reflection ───────────────────────────────────────
 
+    def _maybe_self_reflect(self):
         """If enough time has passed since last self-reflection, drop an inbox file."""
         from app import self_reflect
+        self_reflect.maybe_drop()
 
     # ── Tick loop ───────────────────────────────────────
 
@@ -63,6 +65,7 @@ class Agent:
         if not _running:
             return None
 
+        self._maybe_self_reflect()
         scheduler.ingest_inbox()
 
         picked = scheduler.pick_next_task()

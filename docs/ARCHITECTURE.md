@@ -37,11 +37,11 @@ task/
 1. Reads available skills from `skills/` directory
 2. Runs LLM session with tools support
 3. **Modifies repo source directly** via read/write/edit tools
-4. Changes are committed by solver itself
+4. Commits changes via the `bash` tool (`git add -A && git commit`)
 5. Executor detects HEAD change → restart
 
 **Note:** Solver has full permissions (bash, read, write, edit) and is expected
-to commit changes directly.
+to use `bash` to commit changes after modifying source code.
 
 ### Hotfixer (`app/hotfixer.py`)
 
@@ -50,7 +50,7 @@ to commit changes directly.
 **Behavior:**
 1. Reads repo source code
 2. Implements fixes using read/write/edit tools
-3. **Commits changes directly**
+3. Commits changes via the `bash` tool (`git add -A && git commit`)
 4. Returns summary of changes
 
 ### Executor (`app/executor.py`)
@@ -61,9 +61,10 @@ to commit changes directly.
 1. Records HEAD before session
 2. Runs agent function (`solver.solve` or `hotfixer.fix`)
 3. After session, checks if HEAD changed
-4. If changed → restart via `os.execv`
+4. If changed → calls `on_change` callback (if provided) → restart via `os.execv`
+5. If unchanged → returns result to caller
 
-**Note:** Executor does NOT commit changes. Agents must commit themselves.
+**Note:** Executor does NOT commit changes. Agents use the `bash` tool to commit.
 
 ### Agent (`app/main.py`)
 
@@ -74,7 +75,7 @@ inbox/*.md → scheduler creates task/ → agent picks → executor.run(solver) 
 ```
 
 **Tick loop:**
-1. Periodic self-reflection (drop inbox file)
+1. Periodic self-reflection (calls `self_reflect.maybe_drop()` to drop inbox file)
 2. Ingest inbox files → create tasks
 3. Pick next task
 4. Execute via `executor.run(solver.solve)`
@@ -82,12 +83,13 @@ inbox/*.md → scheduler creates task/ → agent picks → executor.run(solver) 
 
 ## Tool Calling
 
-Solver uses LLM's tool-calling feature:
-- Model returns `tools` array (function calls)
-- Executor calls tools and returns results
+Solver uses LLM's native tool-calling feature (OpenAI-compatible):
+- Model returns `tool_calls` array (function calls)
+- Agent loop (`sdk/agent.py`) executes tools and appends results
 - Model processes results and returns final answer
 
-No merged JSON schema needed for tool calling.
+When both `tools` and `response_format` are present, LLM client enters merged-schema mode.
+Otherwise, standard tool calling is used.
 
 ## Skill Override Pattern
 
@@ -101,8 +103,7 @@ When solver loads skills, it scans both directories. Runtime skills shadow built
 
 Solver has full permissions to modify NYX's own source code:
 - Use write/edit tools on files in `repo/`
-- Commit with `git add -A && git commit -m '<brief desc>'`
-- Executor detects HEAD change → restart
+- Commit with `bash` tool: `git add -A && git commit -m '<brief desc>'`
+- Executor detects HEAD change → restart via `os.execv`
 
-The solver prompt explicitly encourages self-modification:
-"You CAN modify NYX's own source code in {repo}/ to solve tasks."
+The solver prompt explicitly encourages self-modification.
