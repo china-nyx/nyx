@@ -12,17 +12,6 @@ from sdk.skills import scan_skills
 from app.prompts import get_solver_template
 
 
-SYSTEM_TEMPLATE = get_solver_template()
-
-
-def _build_system_prompt() -> str:
-    return SYSTEM_TEMPLATE.format(
-        repo=str(config.repo),
-        sandbox=str(config.sandbox_dir),
-        cwd=str(config.home),
-    )
-
-
 def solve(llm, executor, tools, requirement, tid=""):
     """Returns assistant text directly."""
     skill_index = scan_skills(config.repo / "skills", config.skills_dir)
@@ -31,7 +20,7 @@ def solve(llm, executor, tools, requirement, tid=""):
 
     out = run_session(llm, executor,
                       role="solver", tid=tid,
-                      system_prompt=_build_system_prompt(),
+                      system_prompt=get_solver_template(),
                       user_content=user,
                       tools=tools,
                       temperature=0.7,
