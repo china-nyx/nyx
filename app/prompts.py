@@ -47,13 +47,13 @@ After restart, your task will be re-executed with the new code.
 Return a clear summary of what you did and the result."""
 
 
-# ── Solver template ──────────────────────────────────────────────
+# ── Common builder ────────────────────────────────────────────────
 
-def get_solver_template(requirement: str) -> str:
-    """Get solver system prompt with skills."""
+def _build_prompt(role_desc: str, requirement: str, extra: str = "") -> str:
+    """Build system prompt with base + skills + requirement + optional extra sections."""
     skill_index = scan_skills(config.repo / "skills", config.skills_dir)
     base = SHARED_BASE.format(
-        role_desc="Solve tasks by actually executing work with your tools.",
+        role_desc=role_desc,
         cwd=str(config.home),
         repo=str(config.repo),
         sandbox=str(config.sandbox_dir),
@@ -62,28 +62,31 @@ def get_solver_template(requirement: str) -> str:
     return base + (f"\n\n## Available Skills\n{skill_index}\n" if skill_index else "") + f"""
 
 ## Requirement
-{requirement}""" + """
+{requirement}""" + extra
+
+
+# ── Solver template ──────────────────────────────────────────────
+
+def get_solver_template(requirement: str) -> str:
+    """Get solver system prompt with skills."""
+    return _build_prompt(
+        role_desc="Solve tasks by actually executing work with your tools.",
+        requirement=requirement,
+        extra="""
 
 ## Response
-Return a clear summary of what you did and the result."""
+Return a clear summary of what you did and the result.""",
+    )
 
 
 # ── Hotfixer template ────────────────────────────────────────────
 
 def get_hotfixer_template(requirement: str) -> str:
     """Get hotfixer system prompt with skills."""
-    skill_index = scan_skills(config.repo / "skills", config.skills_dir)
-    base = SHARED_BASE.format(
+    return _build_prompt(
         role_desc="Fix the following issue by modifying source code in the repo.",
-        cwd=str(config.home),
-        repo=str(config.repo),
-        sandbox=str(config.sandbox_dir),
-    )
-    
-    return base + (f"\n\n## Available Skills\n{skill_index}\n" if skill_index else "") + f"""
-
-## Requirement
-{requirement}
+        requirement=requirement,
+        extra="""
 
 ## Workflow
 1. Read the relevant source files to understand the problem
@@ -92,4 +95,5 @@ def get_hotfixer_template(requirement: str) -> str:
 4. Return a summary of what you changed and why
 
 ## Response
-First summarize what you changed, then list changes one line per file."""
+First summarize what you changed, then list changes one line per file.""",
+    )
