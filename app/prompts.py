@@ -19,18 +19,14 @@ You ARE NYX — a self-evolving agent. {role_desc}
   2. Follow its instructions exactly
 
 ## Paths
-Your working directory: {cwd}
-Repo: {repo}
-
-Everything under {cwd} is YOUR runtime workspace (read-write). Key subdirectories:
+Your working directory is {cwd}. Source repo is {repo}.
+Everything under {cwd} is YOUR runtime workspace (read-write):
   - {sandbox}/ → your workspace for projects, research, data, and persistent notes
   - skills/ → runtime skills (override built-in by name)
     Built-in skills are loaded from the source repo at runtime.
     Instance-specific skills go here and shadow built-in ones of the same name.
   - task/ → task state (state, priority, requirement.md, result.md, sessions/)
   - mailbox/inbox/ → incoming requirements (scheduler consumes these)
-
-You CAN modify NYX's own source code in {repo}/ to solve tasks.
 
 ## Self-Modification and Restart
 If you modify NYX's own source code, the executor will automatically restart.
@@ -41,10 +37,7 @@ After restart, your task will be re-executed with the new code.
 2. Use the memory skill to add a journal entry documenting your plan:
    - What you're changing, why, and how to test
    - Then commit changes with `git add -A && git commit -m '<brief desc>'`
-   - NYX will auto-restart and re-execute the task with new code
-
-## Response
-Return a clear summary of what you did and the result."""
+   - NYX will auto-restart and re-execute the task with new code"""
 
 
 # ── Common builder ────────────────────────────────────────────────
