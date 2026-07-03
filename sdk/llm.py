@@ -92,9 +92,9 @@ def _build_schema(tools: List[ToolDefinition], business_schema: Optional[Dict] =
             "type": "object",
             "properties": {
                 "name": {"type": "string", "enum": [fn.name]},
-                "args": params.model_dump() if hasattr(params, 'model_dump') else params,
+                "arguments": params.model_dump() if hasattr(params, 'model_dump') else params,
             },
-            "required": ["name", "args"],
+            "required": ["name", "arguments"],
             "additionalProperties": False,
         })
 
