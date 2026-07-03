@@ -83,7 +83,7 @@ def _build_schema(tools: List[ToolDefinition], business_schema: Optional[Dict] =
     llama-server supports nested schemas via json_schema, so we keep the result
     object nested. The description fields guide the model to use the schema correctly.
     """
-    # Build action items from tool definitions
+    # Build tool items from tool definitions
     tool_items = []
     for tool in tools:
         fn = tool.function
@@ -160,13 +160,13 @@ def _parse_response(raw_text: str) -> ChatCompletionResponse:
     if tools:
         # Model wants to call tools
         tool_calls = []
-        for i, action in enumerate(tools):
+        for i, tool in enumerate(tools):
             tool_calls.append({
                 "id": f"call_{req_id[-6:]}_{i}",
                 "type": "function",
                 "function": {
-                    "name": action["name"],
-                    "arguments": json.dumps(action.get("args", {}), ensure_ascii=False)
+                    "name": tool["name"],
+                    "arguments": json.dumps(tool.get("arguments", {}), ensure_ascii=False)
                 }
             })
         content = parsed.get("thought", "")
