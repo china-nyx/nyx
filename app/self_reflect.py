@@ -28,9 +28,7 @@ def _save_timestamp(ts: float):
         pass
 
 
-import os
 
-INTERVAL_SEC = int(os.environ.get("NYX_SELF_REFLECT_SEC", "3600"))
 
 _last: float = _load_timestamp()
 
@@ -43,11 +41,13 @@ def maybe_drop() -> bool:
     """
     global _last
 
-    if INTERVAL_SEC <= 0:
+    from app.config import config
+    if config.self_reflect_sec <= 0:
         return False
 
     now = time.time()
-    if now - _last < INTERVAL_SEC:
+    from app.config import config
+    if now - _last < config.self_reflect_sec:
         return False
 
     # Dedup: skip if self-reflect task is already pending/running

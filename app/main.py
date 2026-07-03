@@ -43,7 +43,7 @@ class Agent:
         )
         self.ftools = Tools(cwd=config.home)
         self._last_try = {}  # tid -> last tick timestamp
-        self.REQ_RETRY_SEC = int(os.environ.get("NYX_REQ_RETRY_SEC", "25"))
+        self.REQ_RETRY_SEC = config.req_retry_sec
 
 
     def _executor(self, name, args):
