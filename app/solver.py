@@ -16,7 +16,7 @@ def solve(llm, executor, tools, requirement, tid=""):
     """Returns assistant text directly."""
     out = run_session(llm, executor,
                       role="solver", tid=tid,
-                      system_prompt=get_solver_template(),
+                      system_prompt=get_solver_template(requirement),
                       user_content=requirement,
                       tools=tools,
                       temperature=0.7,

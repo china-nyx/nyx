@@ -39,10 +39,9 @@ After restart, your task will be re-executed with the new code.
 **IMPORTANT**: Before modifying code, update your persistent memory:
 1. Read `sandbox/memory/INDEX.md` to understand the memory structure
 2. Use the memory skill to add a journal entry documenting your plan:
-   - What you're changing and why
-   - How to test the changes
-3. Then commit changes with `git add -A && git commit -m '<brief desc>'`
-4. NYX will auto-restart and re-execute the task with new code
+   - What you're changing, why, and how to test
+   - Then commit changes with `git add -A && git commit -m '<brief desc>'`
+   - NYX will auto-restart and re-execute the task with new code
 
 ## Response
 Return a clear summary of what you did and the result."""
@@ -50,21 +49,29 @@ Return a clear summary of what you did and the result."""
 
 # ── Solver template ──────────────────────────────────────────────
 
-def get_solver_template() -> str:
-    """Get solver-specific system template with skills."""
+def get_solver_template(requirement: str) -> str:
+    """Get solver system prompt with skills."""
     skill_index = scan_skills(config.repo / "skills", config.skills_dir)
-    return SHARED_BASE.format(
+    base = SHARED_BASE.format(
         role_desc="Solve tasks by actually executing work with your tools.",
         cwd=str(config.home),
         repo=str(config.repo),
         sandbox=str(config.sandbox_dir),
-    ) + (f"\n\n## Available Skills\n{skill_index}\n" if skill_index else "")
+    )
+    
+    return base + (f"\n\n## Available Skills\n{skill_index}\n" if skill_index else "") + f"""
+
+## Requirement
+{requirement}""" + """
+
+## Response
+Return a clear summary of what you did and the result."""
 
 
 # ── Hotfixer template ────────────────────────────────────────────
 
 def get_hotfixer_template(requirement: str) -> str:
-    """Get hotfixer-specific system template with skills."""
+    """Get hotfixer system prompt with skills."""
     skill_index = scan_skills(config.repo / "skills", config.skills_dir)
     base = SHARED_BASE.format(
         role_desc="Fix the following issue by modifying source code in the repo.",
@@ -86,9 +93,3 @@ def get_hotfixer_template(requirement: str) -> str:
 
 ## Response
 First summarize what you changed, then list changes one line per file."""
-
-
-
-
-
-
