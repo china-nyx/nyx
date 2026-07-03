@@ -1,13 +1,14 @@
 """Agent — the app's main entry point.
 
 OS process model: each requirement is a task with its own persistent directory.
-The scheduler picks the next task, agent executes it via executor.run(solver.solve).
+The scheduler picks the next task, agent executes it via solver.solve().
 
-    inbox/*.md → scheduler creates task/ → agent picks → executor.run(solver) → restart if HEAD changed
+    inbox/*.md → scheduler creates task/ → agent picks → solver.run() → restart if HEAD changed
 """
 import logging
 import os
 import signal
+import sys
 import time
 from pathlib import Path
 
@@ -16,7 +17,6 @@ from sdk.git import Git
 from sdk.llm import LLM
 from sdk.tools import ALL_TOOLS, Tools
 from app import solver
-from app import executor
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +32,13 @@ def _sig(signum, frame):
     _running = False
     logger.info(f"signal {signum}, stopping...")
     raise _Shutdown()
+
+
+def restart():
+    """Restart NYX via boot.py. Never returns on success."""
+    boot_py = config.repo / "app" / "boot.py"
+    logger.info("[main] re-execing NYX...")
+    os.execv(sys.executable, [sys.executable, str(boot_py)])
 
 
 class Agent:
@@ -51,17 +58,13 @@ class Agent:
     def _executor(self, name, args):
         return self.ftools.execute(name, args)
 
-    # ── Self-reflection ─────────────────────────────────────────────
+    # ── Self-reflection ───────────────────────────────────────
 
     def _maybe_self_reflect(self):
-        """If enough time has passed since last self-reflection, drop an inbox file.
-
-        Walks the same path as user-submitted tasks so the user can see it in inbox/.
-        File name: 10-self-reflect-{YYYY-MM-DD-HH}.md (priority=10, hourly granularity)."""
+        """If enough time has passed since last self-reflection, drop an inbox file."""
         now = time.time()
         if self.SELF_REFLECT_INTERVAL <= 0 or now - self._last_self_reflect < self.SELF_REFLECT_INTERVAL:
             return False
-        # Dedup: don't create another if one is already pending/running
         from app import scheduler
         for tid, info in scheduler.scan_tasks():
             src = info.get("source_file", "") or ""
@@ -69,7 +72,6 @@ class Agent:
                 logger.info(f"[agent] skipping self-reflect — {tid} already active ({info['state']})")
                 return False
         self._last_self_reflect = now
-        # Single source of truth: runtime SKILL.md overrides built-in (standard skill override)
         skill_file = config.skills_dir / "self-reflect" / "SKILL.md"
         if not skill_file.exists():
             skill_file = config.repo / "skills" / "self-reflect" / "SKILL.md"
@@ -82,7 +84,7 @@ class Agent:
         inbox_file.write_text(requirement, encoding="utf-8")
         logger.info(f"[agent] dropped self-reflect inbox file {inbox_file.name}")
 
-    # ── Tick loop ───────────────────────────────────────────────
+    # ── Tick loop ───────────────────────────────────────
 
     def tick(self):
         """One agent tick: ingest inbox → pick task → execute."""
@@ -91,13 +93,9 @@ class Agent:
         if not _running:
             return None
 
-        # Periodic self-reflection (before inbox ingestion)
         self._maybe_self_reflect()
-
-        # Ingest new requirements from inbox/
         scheduler.ingest_inbox()
 
-        # Pick next task to run
         picked = scheduler.pick_next_task()
         if picked is None:
             return None
@@ -120,9 +118,8 @@ class Agent:
         return None
 
     def _execute_task(self, tid: str) -> str:
-        """Execute a task via executor.run(solver.solve)."""
-        import json
-        from app import scheduler, executor
+        """Execute a task via solver.solve()."""
+        from app import scheduler
 
         requirement = scheduler.prepare_task(tid)
         if requirement is None:
@@ -134,28 +131,30 @@ class Agent:
         if prev_memory:
             requirement = f"{requirement}\n\n## Previous Session Memory\n{prev_memory}"
 
-        result, head_changed = executor.run(
-            lambda: solver.solve(self.llm, self._executor, ALL_TOOLS, requirement, tid=tid))
+        g = Git(config.repo)
+        pre_head = g.short()
+        logger.info(f"[{tid}] session start, HEAD={pre_head}")
+
+        result = solver.solve(self.llm, self._executor, ALL_TOOLS, requirement, tid=tid)
 
         if not result:
             return "no result yet; will retry"
 
+        post_head = g.short()
+        head_changed = (post_head != pre_head)
+
         if head_changed:
             # Code was modified — save memory and restart
-            mem_path = config.task_dir / tid / "memory.md"
             try:
                 mem_path.write_text(result, encoding="utf-8")
                 logger.info(f"[{tid}] saved memory to {mem_path}")
             except Exception:
                 pass
-            from app.executor import _re_exec
-            _re_exec()
+            restart()
 
         # No code change — mark done here
         scheduler.mark_done(tid, result)
         return "solved"
-
-
 
 
 # ── Main entry point ─────────────────────────────────────────────────
@@ -176,14 +175,7 @@ def run():
                 agent.tick()
         except _Shutdown:
             pass
-
-        sleep_n = 8
-        for _ in range(sleep_n):
-            try:
-                if not _running:
-                    break
-                time.sleep(1)
-            except _Shutdown:
-                pass
-
-    logger.info("NYX stopped.")
+        except Exception:
+            logger.exception("agent crashed, starting self-heal")
+            from app.self_heal import run as self_heal_run
+            self_heal_run()
