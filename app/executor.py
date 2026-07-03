@@ -10,24 +10,15 @@ from sdk.git import Git
 logger = logging.getLogger(__name__)
 
 
-def _re_exec(tid: str = None, result: str = None):
-    """Save memory and restart NYX via boot.py. Never returns on success."""
-    if tid and result:
-        from app import scheduler
-        mem_path = config.task_dir / tid / "memory.md"
-        try:
-            mem_path.write_text(result, encoding="utf-8")
-            logger.info(f"[executor] saved memory to {mem_path}")
-        except Exception:
-            pass
-    
+def _re_exec():
+    """Restart NYX via boot.py. Never returns on success."""
     boot_py = config.repo / "app" / "boot.py"
     logger.info("[executor] re-execing NYX...")
     os.execv(sys.executable, [sys.executable, str(boot_py)])
 
 
-def run(agent_fn, tid: str = None):
-    """Run an agent callable. If HEAD changed, restart."""
+def run(agent_fn):
+    """Run an agent callable. Returns (result, head_changed)."""
     g = Git(config.repo)
 
     pre_head = g.short()
@@ -36,11 +27,11 @@ def run(agent_fn, tid: str = None):
     result = agent_fn()
 
     post_head = g.short()
-    if post_head != pre_head:
-        logger.info(f"[executor] HEAD changed ({pre_head} → {post_head}), restarting")
-        _re_exec(tid=tid, result=result)
+    head_changed = (post_head != pre_head)
+    if head_changed:
+        logger.info(f"[executor] HEAD changed ({pre_head} → {post_head})")
 
-    return result
+    return result, head_changed
 
 
 

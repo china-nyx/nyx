@@ -128,18 +128,31 @@ class Agent:
         if requirement is None:
             return f"unknown state {scheduler.get_state(tid)}"
 
-        result = executor.run(
-            lambda: solver.solve(self.llm, self._executor, ALL_TOOLS, requirement, tid=tid),
-            tid=tid)
+        # Read memory from previous upgrade session (if exists)
+        mem_path = config.task_dir / tid / "memory.md"
+        prev_memory = mem_path.read_text(encoding="utf-8") if mem_path.exists() else ""
+        if prev_memory:
+            requirement = f"{requirement}\n\n## Previous Session Memory\n{prev_memory}"
+
+        result, head_changed = executor.run(
+            lambda: solver.solve(self.llm, self._executor, ALL_TOOLS, requirement, tid=tid))
 
         if not result:
             return "no result yet; will retry"
 
-        # Treat result as plain text (no structured output)
-        content = result
+        if head_changed:
+            # Code was modified — save memory and restart
+            mem_path = config.task_dir / tid / "memory.md"
+            try:
+                mem_path.write_text(result, encoding="utf-8")
+                logger.info(f"[{tid}] saved memory to {mem_path}")
+            except Exception:
+                pass
+            from app.executor import _re_exec
+            _re_exec()
 
-        # No code change — mark done here (executor marks done when restarting)
-        scheduler.mark_done(tid, content)
+        # No code change — mark done here
+        scheduler.mark_done(tid, result)
         return "solved"
 
 
