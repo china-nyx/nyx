@@ -223,13 +223,20 @@ def pick_next_task() -> Optional[Tuple[str, Dict]]:
     running = [(tid, info) for tid, info in tasks if info["state"] == "running"]
     if running:
         running.sort(key=lambda x: -x[1]["priority"])
-        return running[0]
+        chosen = running[0]
+        logger.debug(f"[sched] picked {chosen[0]} (running, pri={chosen[1]['priority']}), "
+                      f"candidates: {len(running)} running, {len(tasks)-len(running)} new")
+        return chosen
 
     new_tasks = [(tid, info) for tid, info in tasks if info["state"] == "new"]
     if new_tasks:
         new_tasks.sort(key=lambda x: -x[1]["priority"])
-        return new_tasks[0]
+        chosen = new_tasks[0]
+        logger.debug(f"[sched] picked {chosen[0]} (new, pri={chosen[1]['priority']}), "
+                      f"candidates: {len(new_tasks)} new")
+        return chosen
 
+    logger.debug(f"[sched] no tasks to pick")
     return None
 
 

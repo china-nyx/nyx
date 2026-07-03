@@ -229,13 +229,20 @@ class LLM:
 
         last_err = None
         body_json = json.dumps(body)
+        msgs = body.get("messages", [])
+        logger.debug(f"[llm] POST {len(msgs)} msgs, body={len(body_json):,} chars, keys={sorted(body.keys())}")
         for attempt in range(1, 4):
             req = urllib.request.Request(
                 self.url, data=body_json.encode(),
                 headers=headers, method="POST")
             try:
                 with self._opener.open(req, timeout=self.timeout) as r:
-                    return json.loads(r.read().decode())
+                    raw = r.read().decode()
+                    resp = json.loads(raw)
+                    usage = resp.get("usage", {})
+                    if usage:
+                        logger.debug(f"[llm] OK usage={usage}")
+                    return resp
             except urllib.error.HTTPError as e:
                 err_body = e.read().decode() if hasattr(e, 'read') else ''
                 logger.error(f"[llm] HTTP {e.code}: {err_body[:500]}")
@@ -269,6 +276,9 @@ class LLM:
             _msgs.append(d)
         _merged = bool(tools and response_format)
 
+        mode = "merged-schema" if _merged else "native-tools" if tools else "chat"
+        logger.info(f"[llm] chat() mode={mode}, msgs={len(_msgs)}, temp={temperature}, max_tokens={max_tokens}")
+
         if _merged:
             business_schema = _extract_schema(response_format)
             merged = _build_schema(tools, business_schema)
@@ -279,7 +289,10 @@ class LLM:
             }
             raw = self._post(body)
             msg = raw["choices"][0]["message"]
-            return _parse_response(msg.get("content", ""))
+            resp = _parse_response(msg.get("content", ""))
+            content_len = len(resp.choices[0].message.content or "")
+            logger.debug(f"[llm] merged response: {content_len} chars")
+            return resp
 
         body = {
             "model": self.model, "messages": _msgs,
@@ -291,4 +304,7 @@ class LLM:
         if response_format:
             body["response_format"] = response_format
         raw = self._post(body)
-        return ChatCompletionResponse.model_validate(raw)
+        resp = ChatCompletionResponse.model_validate(raw)
+        usage = (resp.usage.model_dump() if resp.usage else {})
+        logger.debug(f"[llm] response: {usage}")
+        return resp

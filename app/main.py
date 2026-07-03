@@ -58,6 +58,8 @@ class Agent:
 
     # ── Tick loop ───────────────────────────────────────
 
+    _idle_counter = 0   # ticks since last non-idle activity
+
     def tick(self):
         """One agent tick: ingest inbox → pick task → execute."""
         from app import scheduler
@@ -66,18 +68,25 @@ class Agent:
             return None
 
         self._maybe_self_reflect()
-        scheduler.ingest_inbox()
+        ingested = scheduler.ingest_inbox()
 
         picked = scheduler.pick_next_task()
         if picked is None:
+            # Idle — log periodically so we can tell "no work" from "stuck"
+            Agent._idle_counter += 1
+            if Agent._idle_counter % 30 == 0:
+                active = len(scheduler._active_tids())
+                logger.info(f"[tick] idle, inbox=0, active={active}")
             return None
 
+        Agent._idle_counter = 0
         tid, info = picked
         now = time.time()
         threshold = 0 if tid not in self._last_try else self.REQ_RETRY_SEC
         if now - self._last_try.get(tid, 0.0) >= threshold:
             self._last_try[tid] = now
             scheduler.set_current(tid)
+            logger.info(f"[tick] executing {tid} (state={info['state']}, pri={info['priority']})")
             try:
                 summary = self._execute_task(tid)
             finally:
@@ -85,8 +94,11 @@ class Agent:
             if not _running:
                 return None
             if summary is not None:
-                logger.info(f"[{tid}] {summary[:200]}")
+                logger.info(f"[tick] {tid} done: {summary[:200]}")
             return summary
+        else:
+            wait_left = round(threshold - (now - self._last_try.get(tid, 0.0)), 1)
+            logger.debug(f"[tick] {tid} retry cooldown, waiting {wait_left}s")
         return None
 
     def _execute_task(self, tid: str) -> str:

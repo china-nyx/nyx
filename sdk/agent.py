@@ -120,9 +120,13 @@ def run_agent(client: ChatClient, messages: list[ChatMessage],
     _repeat_last_key = None
     _repeat_cached: Dict[str, str] = {}
 
+    _iteration = 0
     while True:
+        _iteration += 1
         _context_tokens = estimate_context_tokens(_msgs_to_dicts(msgs))
         _clamped_max = clamp_max_tokens(4096, _context_tokens, _context_window)
+
+        logger.debug(f"[agent] iter {_iteration}: msgs={len(msgs)}, est_tokens={_context_tokens}, max_tokens={_clamped_max}")
 
         resp = client.chat(
             msgs,
@@ -202,13 +206,27 @@ def run_agent(client: ChatClient, messages: list[ChatMessage],
                 return _assistant_message(str(res)[:300])
 
         # ── Context compaction ────────────────────────────────────────
-        if should_compact(estimate_context_tokens(_msgs_to_dicts(msgs)), len(msgs),
+        _cur_tokens = estimate_context_tokens(_msgs_to_dicts(msgs))
+        _remaining = _context_window - _compaction.reserve_tokens
+        if should_compact(_cur_tokens, len(msgs),
                           _context_window, _compaction,
                           last_compaction_msg_count=_last_compaction_msg_count):
+            # Determine trigger reason for logging
+            _token_triggered = _cur_tokens > (_context_window - _compaction.reserve_tokens)
+            _msg_triggered = len(msgs) > _compaction.compact_at
+            if _token_triggered and _msg_triggered:
+                _reason = f"tokens={_cur_tokens:,}/{_remaining:,} AND msgs={len(msgs)}/{_compaction.compact_at}"
+            elif _token_triggered:
+                _reason = f"tokens={_cur_tokens:,}/{_remaining:,}"
+            else:
+                _reason = f"msgs={len(msgs)}/{_compaction.compact_at}"
+
             _cut_idx = find_cut_point(_msgs_to_dicts(msgs), _initial_len,
                                       _compaction.keep_recent_tokens)
             compactable = msgs[_initial_len:_cut_idx]
             if compactable:
+                logger.info(f"[compaction] triggered ({_reason}), cutting {len(compactable)} msgs (keep from idx {_cut_idx})")
+
                 _system_msg = ""
                 if msgs and msgs[0].role == "system":
                     _system_msg = msgs[0].content or ""
@@ -217,7 +235,7 @@ def run_agent(client: ChatClient, messages: list[ChatMessage],
                                          _compaction,
                                          previous_summary=_previous_summary)
                 _previous_summary = summary_text
-                logger.info(f"[agent] compaction: summarized {len(compactable)} messages -> {len(summary_text)} chars")
+                logger.info(f"[compaction] summarized {len(compactable)} messages -> {len(summary_text)} chars")
 
                 file_paths = extract_file_paths(_msgs_to_dicts(compactable))
                 file_note = format_file_note(file_paths)

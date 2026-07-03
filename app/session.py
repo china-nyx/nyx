@@ -150,11 +150,15 @@ def run_session(llm, executor, *,
 
     _on_step = make_on_step(role, tid, sess_path=sess_path)
 
+    _model = getattr(llm, "model", "")
+    _n_tools = len(tools) if tools else 0
+    logger.info(f"[session] {role} start tid={tid}, model={_model}, temp={temperature}, tools={_n_tools}")
+
     if log_run:
         _write_session_record(sess_path, {
             "type": "run", "tid": tid,
             "requirement": requirement[:500],
-            "model": getattr(llm, "model", ""),
+            "model": _model,
             "cwd": str(config.home),
         })
 
@@ -170,6 +174,8 @@ def run_session(llm, executor, *,
         logger.info(f"[thought] {thought}")
 
     out = thought.strip()
+
+    logger.info(f"[session] {role} end tid={tid}, output={len(out)} chars")
 
     if log_run:
         _write_session_record(sess_path, {"type": "output", "text": out})

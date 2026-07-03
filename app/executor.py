@@ -37,9 +37,13 @@ def run(agent_fn: Callable[[], str],
 
     post_head = g.short()
     if post_head != pre_head:
-        logger.info(f"[executor] HEAD changed ({pre_head} → {post_head})")
+        logger.info(f"[executor] HEAD changed ({pre_head} → {post_head}), saving state and restarting")
         if on_change:
-            on_change(result)
+            try:
+                on_change(result)
+            except Exception:
+                logger.exception("[executor] on_change callback failed")
         _re_exec()
 
+    logger.info(f"[executor] session end, HEAD unchanged ({pre_head})")
     return result
