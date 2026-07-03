@@ -2,7 +2,7 @@ from __future__ import annotations
 
 """Solver — attempt-to-solve using tools and skills.
 
-Runs an LLM session. If it modifies repo code, executor detects dirty → commit + restart.
+Runs an LLM session. If it modifies repo code, it commits directly.
 
 Returns assistant text directly (no structured output)."""
 

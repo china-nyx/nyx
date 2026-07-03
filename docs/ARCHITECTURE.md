@@ -35,14 +35,13 @@ task/
 
 **Behavior:**
 1. Reads available skills from `skills/` directory
-2. Runs LLM session with structured output (merged JSON schema mode)
+2. Runs LLM session with tools support
 3. **Modifies repo source directly** via read/write/edit tools
-4. If repo changed → evolver detects → auto-commit + restart
+4. Changes are committed by solver itself
+5. Executor detects HEAD change → restart
 
-**Response format:**
-- `thought`: Internal reasoning process
-- `tools`: Tool calls needed (bash, read, write, edit)
-- `result`: Final answer when no more tools needed
+**Note:** Solver has full permissions (bash, read, write, edit) and is expected
+to commit changes directly.
 
 ### Hotfixer (`app/hotfixer.py`)
 
@@ -54,77 +53,41 @@ task/
 3. **Commits changes directly**
 4. Returns summary of changes
 
-### Evolver (`app/evolver.py`)
+### Executor (`app/executor.py`)
 
-**Purpose:** Run agent session, then commit + restart if repo changed.
+**Purpose:** Run agent session, then restart if repo HEAD changed.
 
 **Workflow:**
 1. Records HEAD before session
 2. Runs agent function (`solver.solve` or `hotfixer.fix`)
-3. After session, checks if repo changed
-4. If changed → commit + restart via `os.execv`
+3. After session, checks if HEAD changed
+4. If changed → restart via `os.execv`
+
+**Note:** Executor does NOT commit changes. Agents must commit themselves.
 
 ### Agent (`app/main.py`)
 
 **Main entry point:**
 
 ```
-inbox/*.md → scheduler creates task/ → agent picks → evolver.evolve(solver) → auto-commit+restart
+inbox/*.md → scheduler creates task/ → agent picks → executor.run(solver) → restart if changed
 ```
 
 **Tick loop:**
 1. Periodic self-reflection (drop inbox file)
 2. Ingest inbox files → create tasks
 3. Pick next task
-4. Execute via `evolver.evolve(solver.solve)`
-5. Mark done if no code change
+4. Execute via `executor.run(solver.solve)`
+5. Mark done after execution
 
-## JSON Schema (Merged Mode)
+## Tool Calling
 
-When both `tools` and `response_format` are present:
+Solver uses LLM's tool-calling feature:
+- Model returns `tools` array (function calls)
+- Executor calls tools and returns results
+- Model processes results and returns final answer
 
-```json
-{
-  "type": "json_schema",
-  "json_schema": {
-    "name": "agent_response",
-    "strict": true,
-    "schema": {
-      "type": "object",
-      "properties": {
-        "thought": {"type": "string"},
-        "tools": {
-          "type": "array",
-          "items": {"type": "object", "properties": {"name": "...", "args": {...}}}
-        },
-        "result": {"type": "object"}
-      },
-      "required": ["thought", "tools"]
-    }
-  }
-}
-```
-
-**Field naming (internal):**
-- `thought` — Reasoning process
-- `tools` — Tool calls (uses `name` and `args`)
-- `result` — Final answer
-
-**OpenAI compatibility:**
-- Output: `arguments` (not `args`)
-- `name` — tool name
-
-## Bind Mount Behavior
-
-### Solver
-- **Read-only bind mount** of main repo
-- Can read source code
-- If needs to modify → returns result → evolver restarts
-
-### Hotfixer
-- **Writeable bind mount** of main repo
-- Can modify source code directly
-- Commits changes directly
+No merged JSON schema needed for tool calling.
 
 ## Skill Override Pattern
 
@@ -134,13 +97,12 @@ Skills loaded from two sources:
 
 When solver loads skills, it scans both directories. Runtime skills shadow built-in ones.
 
-## Multi-turn Tool Calling
+## Self-Modification
 
-NYX uses merged JSON schema mode to support:
-1. **Turn 1:** Model returns `tools` array → executor calls tools
-2. **Turn 2:** Tools results sent back → Model returns `tools=[]` + `result={...}`
+Solver has full permissions to modify NYX's own source code:
+- Use write/edit tools on files in `repo/`
+- Commit with `git add -A && git commit -m '<brief desc>'`
+- Executor detects HEAD change → restart
 
-No `oneOf` support in llama-server — schema allows both but logic handles:
-- `tools` non-empty → execute tools
-- `tools` empty + `result` present → return final answer
-- If neither → raise error (retry)
+The solver prompt explicitly encourages self-modification:
+"You CAN modify NYX's own source code in {repo}/ to solve tasks."

@@ -1,9 +1,9 @@
 """Agent — the app's main entry point.
 
 OS process model: each requirement is a task with its own persistent directory.
-The scheduler picks the next task, agent executes it via executor.evolve(solver.solve).
+The scheduler picks the next task, agent executes it via executor.run(solver.solve).
 
-    inbox/*.md → scheduler creates task/ → agent picks → evolve(solver) → auto-commit+restart if dirty
+    inbox/*.md → scheduler creates task/ → agent picks → executor.run(solver) → restart if HEAD changed
 """
 import logging
 import os
