@@ -1,7 +1,7 @@
 """Agent — the app's main entry point.
 
 OS process model: each requirement is a task with its own persistent directory.
-The scheduler picks the next task, agent executes it via evolver.evolve(solver.solve).
+The scheduler picks the next task, agent executes it via executor.evolve(solver.solve).
 
     inbox/*.md → scheduler creates task/ → agent picks → evolve(solver) → auto-commit+restart if dirty
 """
@@ -16,7 +16,7 @@ from sdk.git import Git
 from sdk.llm import LLM
 from sdk.tools import ALL_TOOLS, Tools
 from app import solver
-from app import evolver
+from app import executor
 
 logger = logging.getLogger(__name__)
 
@@ -120,21 +120,21 @@ class Agent:
         return None
 
     def _execute_task(self, tid: str) -> str:
-        """Execute a task via evolver.evolve(solver.solve)."""
+        """Execute a task via executor.evolve(solver.solve)."""
         from app import scheduler
 
         requirement = scheduler.prepare_task(tid)
         if requirement is None:
             return f"unknown state {scheduler.get_state(tid)}"
 
-        result = evolver.evolve(
+        result = executor.run(
             lambda: solver.solve(self.llm, self._executor, ALL_TOOLS, requirement, tid=tid),
             tid=tid)
 
         if not result:
             return "no result yet; will retry"
 
-        # No code change — mark done here (evolver marks done when restarting)
+        # No code change — mark done here (executor marks done when restarting)
         scheduler.mark_done(tid, result)
         return "solved"
 

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 """Solver — attempt-to-solve using tools and skills.
 
-Runs an LLM session. If it modifies repo code, evolver detects dirty → commit + restart."""
+Runs an LLM session. If it modifies repo code, executor detects dirty → commit + restart."""
 
 from app.config import config
 from app.session import run_session

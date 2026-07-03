@@ -3,7 +3,7 @@ from app.config import config
 from app.session import run_session
 
 SYSTEM_TEMPLATE = """\
-You are NYX's hotfixer. Fix the following issue by modifying source code in the repo.
+You are NYX's updaterer. Fix the following issue by modifying source code in the repo.
 
 ## Paths
 Your working directory: {cwd}
@@ -26,7 +26,7 @@ First summarize what you changed, then list changes one line per file."""
 
 
 def fix(llm, executor, requirement: str, tid: str = "") -> str:
-    """Run a hotfix LLM session. Returns assistant text (for evolver → commit message)."""
+    """Run a updater LLM session. Returns assistant text (for evolver → commit message)."""
     system_prompt = SYSTEM_TEMPLATE.format(
         cwd=str(config.home),
         repo=str(config.repo),
@@ -34,7 +34,7 @@ def fix(llm, executor, requirement: str, tid: str = "") -> str:
     )
 
     return run_session(llm, executor,
-                       role="hotfixer", tid=tid,
+                       role="updaterer", tid=tid,
                        system_prompt=system_prompt,
                        user_content=(
                            f"Read the source code in the repo at {config.repo}/\n"
