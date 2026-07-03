@@ -120,8 +120,9 @@ class Agent:
         return None
 
     def _execute_task(self, tid: str) -> str:
-        """Execute a task via executor.evolve(solver.solve)."""
-        from app import scheduler
+        """Execute a task via executor.run(solver.solve)."""
+        import json
+        from app import scheduler, executor
 
         requirement = scheduler.prepare_task(tid)
         if requirement is None:
@@ -134,8 +135,23 @@ class Agent:
         if not result:
             return "no result yet; will retry"
 
+        # Parse structured response
+        try:
+            parsed = json.loads(result)
+            status = parsed.get("status", "done")
+            content = parsed.get("content", "")
+        except json.JSONDecodeError:
+            # Fallback: treat as plain text
+            status = "done"
+            content = result
+
+        if status == "needs_upgrade":
+            # Create updater subtask and mark parent waiting
+            scheduler.mark_done(tid, content)
+            return "needs_upgrade"
+
         # No code change — mark done here (executor marks done when restarting)
-        scheduler.mark_done(tid, result)
+        scheduler.mark_done(tid, content)
         return "solved"
 
 
