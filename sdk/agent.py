@@ -108,6 +108,8 @@ def run_agent(client: ChatClient, messages: list[ChatMessage],
     msgs = list(messages)
     _initial_len = len(msgs)
 
+    logger.info(f"[agent] start: {_initial_len} initial msgs, model={getattr(client, 'model', '?')}, temp={temperature}")
+
     # Duplicate detection: track MD5 hashes of tool outputs
     _seen_outputs: Set[str] = set()
     _dup_count = 0
@@ -137,12 +139,14 @@ def run_agent(client: ChatClient, messages: list[ChatMessage],
         )
 
         if not resp.choices:
+            logger.warning(f"[agent] empty response after {_iteration} iterations, returning error")
             break
         message = resp.choices[0].message
         tcs = message.tool_calls or []
         if not tcs:
             content = _strip_think(message.content or "")
             stop_reason = resp.choices[0].finish_reason
+            logger.info(f"[agent] done after {_iteration} iterations, output={len(content)} chars")
             return {
                 "role": "assistant",
                 "content": content,
@@ -171,6 +175,7 @@ def run_agent(client: ChatClient, messages: list[ChatMessage],
                 _repeat_last_key = _args_key
 
             if _repeat_consecutive >= _REPEAT_THRESHOLD:
+                logger.warning(f"[agent] repetitive call guard: {name} called {_repeat_consecutive}x consecutively")
                 _cached_result = _repeat_cached.get(_args_key, "(no cached result)")
                 _warning = (
                     f"[REPETITIVE CALL GUARD] You have run this identical command "
@@ -250,4 +255,5 @@ def run_agent(client: ChatClient, messages: list[ChatMessage],
                 # Record post-compaction msg count for cooldown tracking
                 _last_compaction_msg_count = len(msgs)
 
+    logger.warning(f"[agent] exiting with error after {_iteration} iterations: no valid response from LLM")
     return _assistant_message("", stop_reason="error", error_message="no response")

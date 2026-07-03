@@ -4,8 +4,11 @@ Pure functions. No dependency on app/config or sdk/tools.
 All behaviour knobs are passed explicitly via ``CompactionSettings``.
 """
 import json
+import logging
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Set
+
+logger = logging.getLogger(__name__)
 
 
 # ── Settings (injected by caller) ───────────────────────────────────
@@ -261,6 +264,8 @@ def summarize(client: ChatClient, system_msg: str, compactable: List[Dict],
     else:
         user_parts.append(COMPACT_PROMPT)
 
+    logger.debug(f"[compaction] summarizing {len(compactable)} msgs, conversation={len(conversation_text):,} chars")
+
     resp = client.chat(
         [
             {"role": "system", "content": COMPACT_SYSTEM},
@@ -269,7 +274,10 @@ def summarize(client: ChatClient, system_msg: str, compactable: List[Dict],
         temperature=0.3,
         max_tokens=settings.summarize_max_tokens,
     )
-    return (resp.choices[0].message.content or "").strip()
+
+    summary = (resp.choices[0].message.content or "").strip()
+    logger.debug(f"[compaction] summary produced: {len(summary)} chars")
+    return summary
 
 
 # ── Full compaction step ────────────────────────────────────────────
