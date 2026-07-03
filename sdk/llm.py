@@ -262,7 +262,7 @@ class LLM:
         """
         _msgs = []
         for m in messages:
-            d = m.model_dump(exclude_none=True)
+            d = m.model_dump(exclude_none=True) if hasattr(m, 'model_dump') else dict(m)
             # Ensure non-assistant roles always have 'content' (llama-server rejects missing content)
             if d.get("role") != "assistant" and "content" not in d:
                 d["content"] = ""
