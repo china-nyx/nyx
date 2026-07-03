@@ -53,20 +53,22 @@ def _build_prompt(role_desc: str, requirement: str, extra: str = "") -> str:
 
 def get_solver_template(requirement: str) -> str:
     """Get solver system prompt with skills."""
+    repo_path = str(config.repo)
     return _build_prompt(
         role_desc="Solve tasks by actually executing work with your tools.",
         requirement=requirement,
-        extra="""
+        extra=f"""
 
-## Self-Modification and Restart
-You CAN modify the source code to solve tasks.
+## Task Completion
 
-**IMPORTANT**: Before modifying code, update your persistent memory:
-1. Read `sandbox/memory/INDEX.md` to understand the memory structure
-2. Use the memory skill to add a journal entry documenting your plan:
-   - What you're changing, why, and how to test
-   - Then commit changes with `git add -A && git commit -m '<brief desc>'`
-   - NYX will auto-restart and re-execute the task with new code
+**If you solved the task without modifying source code:**
+Return a clear summary of what you did and the result. This will be written to result.md for the user.
+
+**If you modified source code in {repo_path}:**
+1. Write your progress notes to `task/<tid>/memory.md` (what changed, why, next steps)
+2. Commit changes: `git add -A && git commit -m '<brief desc>'`
+3. Return the memory content as your response — it will be read after restart
+4. NYX will restart with upgraded code and retry this task (not marked done)
 
 ## Response
 Return a clear summary of what you did and the result.""",
@@ -81,8 +83,6 @@ def get_hotfixer_template(requirement: str) -> str:
         role_desc="Fix the following issue by modifying source code in the repo.",
         requirement=requirement,
         extra="""
-
-## Workflow
 
 ## Workflow
 1. Read the relevant source files to understand the problem
