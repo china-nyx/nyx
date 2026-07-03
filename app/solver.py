@@ -8,20 +8,16 @@ Returns assistant text directly (no structured output)."""
 
 from app.config import config
 from app.session import run_session
-from sdk.skills import scan_skills
+
 from app.prompts import get_solver_template
 
 
 def solve(llm, executor, tools, requirement, tid=""):
     """Returns assistant text directly."""
-    skill_index = scan_skills(config.repo / "skills", config.skills_dir)
-    skill_prefix = (skill_index + "\n\n" if skill_index else "")
-    user = skill_prefix + f"TASK:\n{requirement}"
-
     out = run_session(llm, executor,
                       role="solver", tid=tid,
                       system_prompt=get_solver_template(),
-                      user_content=user,
+                      user_content=requirement,
                       tools=tools,
                       temperature=0.7,
                       prune_sessions=True, log_run=True)
