@@ -1,5 +1,6 @@
 """Common prompt templates for solver and hotfixer."""
 from app.config import config
+from sdk.skills import scan_skills
 
 # ── Shared base template ─────────────────────────────────────────
 
@@ -50,19 +51,21 @@ Return a clear summary of what you did and the result."""
 # ── Solver template ──────────────────────────────────────────────
 
 def get_solver_template() -> str:
-    """Get solver-specific system template."""
+    """Get solver-specific system template with skills."""
+    skill_index = scan_skills(config.repo / "skills", config.skills_dir)
     return SHARED_BASE.format(
         role_desc="Solve tasks by actually executing work with your tools.",
         cwd=str(config.home),
         repo=str(config.repo),
         sandbox=str(config.sandbox_dir),
-    )
+    ) + (f"\n\n## Available Skills\n{skill_index}\n" if skill_index else "")
 
 
 # ── Hotfixer template ────────────────────────────────────────────
 
 def get_hotfixer_template(requirement: str) -> str:
-    """Get hotfixer-specific system template."""
+    """Get hotfixer-specific system template with skills."""
+    skill_index = scan_skills(config.repo / "skills", config.skills_dir)
     base = SHARED_BASE.format(
         role_desc="Fix the following issue by modifying source code in the repo.",
         cwd=str(config.home),
@@ -70,7 +73,7 @@ def get_hotfixer_template(requirement: str) -> str:
         sandbox=str(config.sandbox_dir),
     )
     
-    return base + f"""
+    return base + (f"\n\n## Available Skills\n{skill_index}\n" if skill_index else "") + f"""
 
 ## Requirement
 {requirement}
