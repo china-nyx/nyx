@@ -63,7 +63,7 @@ class Config(BaseModel):
 
     @property
     def runtime_dirs(self) -> list:
-        return [self.inbox_dir, self.task_dir, self.skills_dir, self.sandbox_dir]
+        return [self.log_dir, self.inbox_dir, self.task_dir, self.skills_dir, self.sandbox_dir]
 
     @classmethod
     def from_settings(cls, *, repo: Path, home: Path):
