@@ -148,7 +148,7 @@ class Agent:
             content = result
 
         if status == "needs_upgrade":
-            # Create updater subtask and mark parent waiting
+            # Create hotfixer subtask and mark parent waiting
             scheduler.create_upgrader_task(tid, content)
             return "needs_upgrade"
 
