@@ -120,8 +120,7 @@ def run_session(llm, executor, *,
                 system_prompt: str, user_content: str,
                 tools: List[Dict] = None, temperature: float = 0.5,
                 prune_sessions: bool = False,
-                log_run: bool = False,
-                use_skills: bool = True) -> str:
+                log_run: bool = False) -> str:
     """Run an agent session with shared setup (session file, on_step, run_agent).
 
     Returns the assistant's final text content.
@@ -152,13 +151,7 @@ def run_session(llm, executor, *,
 
     _on_step = make_on_step(role, tid, sess_path=sess_path)
 
-    # Add skills index to user_content if enabled
-    final_user_content = user_content
-    if use_skills:
-        from sdk.skills import scan_skills
-        skill_index = scan_skills(config.repo / "skills", config.skills_dir)
-        skill_prefix = (skill_index + "\n\n" if skill_index else "")
-        final_user_content = skill_prefix + f"TASK:\n{user_content}"
+    # user_content is the requirement, no skills prefix
 
     if log_run:
         _write_session_record(sess_path, {
@@ -171,7 +164,7 @@ def run_session(llm, executor, *,
     res = run_agent(llm,
         messages=[
             ChatMessage(role="system", content=system_prompt),
-            ChatMessage(role="user", content=final_user_content),
+            ChatMessage(role="user", content=user_content),
         ],
         tool_executor=executor, tools=tools,
         temperature=temperature, on_step=_on_step)
