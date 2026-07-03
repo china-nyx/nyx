@@ -111,8 +111,9 @@ def run_agent(client: ChatClient, messages: list[ChatMessage],
     # Duplicate detection: track MD5 hashes of tool outputs
     _seen_outputs: Set[str] = set()
     _dup_count = 0
-    # Compaction: track previous summary for incremental merging
+    # Compaction: track previous summary for incremental merging + cooldown
     _previous_summary = ""
+    _last_compaction_msg_count = 0  # msg_count at last compaction (for cooldown)
     # Repetitive call guard
     _repeat_history: deque = deque(maxlen=_REPEAT_HISTORY_WINDOW)
     _repeat_consecutive = 0
@@ -202,7 +203,8 @@ def run_agent(client: ChatClient, messages: list[ChatMessage],
 
         # ── Context compaction ────────────────────────────────────────
         if should_compact(estimate_context_tokens(_msgs_to_dicts(msgs)), len(msgs),
-                          _context_window, _compaction):
+                          _context_window, _compaction,
+                          last_compaction_msg_count=_last_compaction_msg_count):
             _cut_idx = find_cut_point(_msgs_to_dicts(msgs), _initial_len,
                                       _compaction.keep_recent_tokens)
             compactable = msgs[_initial_len:_cut_idx]
@@ -227,5 +229,7 @@ def run_agent(client: ChatClient, messages: list[ChatMessage],
                     f"{file_note}\n\nContinue working on the task from where you left off."
                 ))
                 msgs = msgs[:_initial_len] + [summary_msg] + msgs[_cut_idx:]
+                # Record post-compaction msg count for cooldown tracking
+                _last_compaction_msg_count = len(msgs)
 
     return _assistant_message("", stop_reason="error", error_message="no response")

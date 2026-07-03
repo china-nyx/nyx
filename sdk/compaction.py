@@ -22,6 +22,8 @@ class CompactionSettings:
     reserve_tokens: int = 16384       # trigger when remaining < this many tokens
     keep_recent_tokens: int = 20000   # keep this many recent tokens untouched
     summarize_max_tokens: int = 1024  # max tokens for the summarization LLM call
+    compact_at: int = 100             # msg_count threshold to trigger compaction
+    cooldown_messages: int = 10       # min new msgs since last compaction before re-trigger
 
 
 # ── Token estimation ────────────────────────────────────────────────
@@ -55,15 +57,29 @@ def clamp_max_tokens(requested: int, context_tokens: int, context_window: int) -
 
 
 def should_compact(context_tokens: int, msg_count: int,
-                   context_window: int, settings: CompactionSettings) -> bool:
-    """Check if compaction should trigger based on token count or message count."""
+                   context_window: int, settings: CompactionSettings,
+                   last_compaction_msg_count: int = 0) -> bool:
+    """Check if compaction should trigger based on token count or message count.
+
+    Args:
+        last_compaction_msg_count: msg_count at the time of the last compaction.
+            If set, compaction won't re-trigger until at least ``cooldown_messages``
+            new messages have accumulated since then (prevents tight-loop re-firing).
+    """
     if not settings.enabled:
         return False
-    _COMPACT_AT = 60
-    return (
-        context_tokens > (context_window - settings.reserve_tokens)
-        or msg_count > _COMPACT_AT
-    )
+
+    # Token-based trigger (always urgent — no cooldown)
+    token_triggered = context_tokens > (context_window - settings.reserve_tokens)
+
+    # Message-count trigger (subject to cooldown)
+    msg_triggered = msg_count > settings.compact_at
+    if msg_triggered and last_compaction_msg_count > 0:
+        # Cooldown: don't re-trigger until enough new messages accumulated
+        if (msg_count - last_compaction_msg_count) < settings.cooldown_messages:
+            msg_triggered = False
+
+    return token_triggered or msg_triggered
 
 
 def find_cut_point(messages: List[Dict], initial_len: int,
@@ -260,7 +276,8 @@ def summarize(client: ChatClient, system_msg: str, compactable: List[Dict],
 
 def compact_step(client: ChatClient, messages: List[Dict], initial_len: int,
                  context_window: int, settings: CompactionSettings,
-                 previous_summary: str = "", dup_count: int = 0) -> Optional[List[Dict]]:
+                 previous_summary: str = "", dup_count: int = 0,
+                 last_compaction_msg_count: int = 0) -> Optional[List[Dict]]:
     """Execute one compaction cycle. Returns new messages list, or None if no compaction needed.
 
     Checks trigger → finds cut point → summarizes → splices summary into messages.
@@ -268,7 +285,8 @@ def compact_step(client: ChatClient, messages: List[Dict], initial_len: int,
     Use get_last_summary() to extract it from the result.
     """
     context_tokens = estimate_context_tokens(messages)
-    if not should_compact(context_tokens, len(messages), context_window, settings):
+    if not should_compact(context_tokens, len(messages), context_window, settings,
+                          last_compaction_msg_count):
         return None
 
     cut_idx = find_cut_point(messages, initial_len, settings.keep_recent_tokens)
