@@ -163,7 +163,7 @@ def _parse_response(raw_text: str) -> ChatCompletionResponse:
                 "type": "function",
                 "function": {
                     "name": action["name"],
-                    "arguments": json.dumps(action.get("args", {}))
+                    "arguments": json.dumps(action.get("args", {}), ensure_ascii=False)
                 }
             })
         content = parsed.get("thought", "")
@@ -185,7 +185,7 @@ def _parse_response(raw_text: str) -> ChatCompletionResponse:
     # No actions → final result (result must be present per schema)
     result = parsed["result"]
     if isinstance(result, dict):
-        content = json.dumps(result)
+        content = json.dumps(result, ensure_ascii=False)
     else:
         content = str(result)
 
