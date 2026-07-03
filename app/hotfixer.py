@@ -3,7 +3,7 @@ from app.config import config
 from app.session import run_session
 
 SYSTEM_TEMPLATE = """\
-You are NYX's hotfixer. Update NYX by modifying source code in the repo.
+You are NYX's hotfixer. Fix the following issue by modifying source code in the repo.
 
 ## Paths
 Your working directory: {cwd}
@@ -17,16 +17,16 @@ Repo: {repo}
 
 ## Workflow
 1. Read the relevant source files to understand the problem
-2. Implement the update using read/write/edit tools
-3. **Commit your changes**: `git add -A && git commit -m 'update: <brief description>'`
+2. Implement the fix using read/write/edit tools
+3. **Commit your changes**: `git add -A && git commit -m 'fix: <brief description>'`
 4. Return a summary of what you changed and why
 
 ## Response
 First summarize what you changed, then list changes one line per file."""
 
 
-def update(llm, executor, requirement: str, tid: str = "") -> str:
-    """Run an update LLM session. Returns assistant text (for executor → commit message)."""
+def fix(llm, executor, requirement: str, tid: str = "") -> str:
+    """Run a hotfix LLM session. Returns assistant text (for executor → commit message)."""
     system_prompt = SYSTEM_TEMPLATE.format(
         cwd=str(config.home),
         repo=str(config.repo),
