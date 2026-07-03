@@ -187,7 +187,7 @@ def _parse_response(raw_text: str) -> ChatCompletionResponse:
 
     # No tools → final result (thought is required, result should be present)
     if "result" not in parsed:
-        raise ValueError(f"Schema violation: missing 'result' field. Full response: {raw_text[:300]}")
+        raise ValueError(f"Schema violation: missing 'result' field. Full response: {raw_text}")
     result = parsed["result"]
     if isinstance(result, dict):
         content = json.dumps(result, ensure_ascii=False)
