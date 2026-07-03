@@ -10,8 +10,17 @@ from sdk.git import Git
 logger = logging.getLogger(__name__)
 
 
-def _re_exec(tid: str = None):
-    """Restart NYX via boot.py. Never returns on success."""
+def _re_exec(tid: str = None, result: str = None):
+    """Save memory and restart NYX via boot.py. Never returns on success."""
+    if tid and result:
+        from app import scheduler
+        mem_path = config.task_dir / tid / "memory.md"
+        try:
+            mem_path.write_text(result, encoding="utf-8")
+            logger.info(f"[executor] saved memory to {mem_path}")
+        except Exception:
+            pass
+    
     boot_py = config.repo / "app" / "boot.py"
     logger.info("[executor] re-execing NYX...")
     os.execv(sys.executable, [sys.executable, str(boot_py)])
@@ -29,7 +38,7 @@ def run(agent_fn, tid: str = None):
     post_head = g.short()
     if post_head != pre_head:
         logger.info(f"[executor] HEAD changed ({pre_head} → {post_head}), restarting")
-        _re_exec(tid, result)
+        _re_exec(tid=tid, result=result)
 
     return result
 

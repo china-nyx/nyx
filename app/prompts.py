@@ -53,22 +53,20 @@ def _build_prompt(role_desc: str, requirement: str, extra: str = "") -> str:
 
 def get_solver_template(requirement: str) -> str:
     """Get solver system prompt with skills."""
-    repo_path = str(config.repo)
     return _build_prompt(
         role_desc="Solve tasks by actually executing work with your tools.",
         requirement=requirement,
-        extra=f"""
+        extra="""
 
 ## Task Completion
 
 **If you solved the task without modifying source code:**
 Return a clear summary of what you did and the result. This will be written to result.md for the user.
 
-**If you modified source code in {repo_path}:**
-1. Write your progress notes to `task/<tid>/memory.md` (what changed, why, next steps)
-2. Commit changes: `git add -A && git commit -m '<brief desc>'`
-3. Return the memory content as your response — it will be read after restart
-4. NYX will restart with upgraded code and retry this task (not marked done)
+**If you modified source code in the repo:**
+1. Commit changes: `git add -A && git commit -m '<brief desc>'`
+2. Return your progress notes (what changed, why, next steps)
+   — NYX will save this and retry the task with upgraded code after restart
 
 ## Response
 Return a clear summary of what you did and the result.""",
