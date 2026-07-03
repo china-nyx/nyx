@@ -118,16 +118,15 @@ class Agent:
             return f"unknown state {scheduler.get_state(tid)}"
 
         # Read memory from previous upgrade session (if exists)
-        mem_path = config.task_dir / tid / "memory.md"
-        prev_memory = mem_path.read_text(encoding="utf-8") if mem_path.exists() else ""
+        prev_memory = scheduler._read(tid, "memory.md")
         if prev_memory:
             requirement = f"{requirement}\n\n## Previous Session Memory\n{prev_memory}"
 
         def on_code_change(result: str):
             """Save memory when code was modified."""
             try:
-                mem_path.write_text(result, encoding="utf-8")
-                logger.info(f"[{tid}] saved memory to {mem_path}")
+                scheduler._write(tid, "memory.md", result)
+                logger.info(f"[{tid}] saved memory")
             except Exception:
                 pass
 
