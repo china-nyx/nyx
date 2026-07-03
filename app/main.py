@@ -138,6 +138,7 @@ def run():
         try:
             if _running:
                 agent.tick()
+            time.sleep(1)  # idle poll interval — prevents 100% CPU spin
         except _Shutdown:
             pass
         except Exception as exc:
