@@ -117,7 +117,7 @@ def make_on_step(role: str, tid: str, sess_path: str = None):
 
 def run_session(llm, executor, *,
                 role: str, tid: str,
-                system_prompt: str, user_content: str,
+                system_prompt: str, requirement: str,
                 tools: List[Dict] = None, temperature: float = 0.5,
                 prune_sessions: bool = False,
                 log_run: bool = False) -> str:
@@ -164,7 +164,7 @@ def run_session(llm, executor, *,
     res = run_agent(llm,
         messages=[
             ChatMessage(role="system", content=system_prompt),
-            ChatMessage(role="user", content=""),
+            ChatMessage(role="user", content=requirement),
         ],
         tool_executor=executor, tools=tools,
         temperature=temperature, on_step=_on_step)

@@ -17,7 +17,7 @@ def solve(llm, executor, tools, requirement, tid=""):
     out = run_session(llm, executor,
                       role="solver", tid=tid,
                       system_prompt=get_solver_template(requirement),
-                      user_content=requirement,
+                      requirement=requirement,
                       tools=tools,
                       temperature=0.7,
                       prune_sessions=True, log_run=True)

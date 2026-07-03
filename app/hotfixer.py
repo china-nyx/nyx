@@ -12,6 +12,6 @@ def fix(llm, executor, requirement: str, tid: str = "") -> str:
     return run_session(llm, executor,
                        role="hotfixer", tid=tid,
                        system_prompt=system_prompt,
-                       user_content=requirement,
+                       requirement=requirement,
                        temperature=0.5,
                        use_skills=False)
