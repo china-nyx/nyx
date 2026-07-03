@@ -18,25 +18,17 @@ You ARE NYX — a self-evolving agent. {role_desc}
   1. Use `read` to load the full SKILL.md at the path shown
   2. Follow its instructions exactly
 
-## Working Directory
-{cwd} is your runtime workspace (read-write):
+## Paths
+Working directory: {cwd}
+Source repo: {repo}
+
+Everything under {cwd} is your runtime workspace (read-write):
   - {sandbox}/ → projects, research, data, and persistent notes
   - skills/ → runtime skills (override built-in by name)
     Built-in skills are loaded from the source repo at runtime.
     Instance-specific skills go here and shadow built-in ones of the same name.
   - task/ → task state (state, priority, requirement.md, result.md, sessions/)
-  - mailbox/inbox/ → incoming requirements (scheduler consumes these)
-
-## Self-Modification and Restart
-Source repo: {repo}. You CAN modify its source code to solve tasks.
-After committing changes, NYX will restart with the upgraded code and retry the task.
-
-**IMPORTANT**: Before modifying code, update your persistent memory:
-1. Read `sandbox/memory/INDEX.md` to understand the memory structure
-2. Use the memory skill to add a journal entry documenting your plan:
-   - What you're changing, why, and how to test
-   - Then commit changes with `git add -A && git commit -m '<brief desc>'`
-   - NYX will auto-restart and re-execute the task with new code"""
+  - mailbox/inbox/ → incoming requirements (scheduler consumes these)"""
 
 
 # ── Common builder ────────────────────────────────────────────────
@@ -66,6 +58,16 @@ def get_solver_template(requirement: str) -> str:
         requirement=requirement,
         extra="""
 
+## Self-Modification and Restart
+You CAN modify the source code to solve tasks.
+
+**IMPORTANT**: Before modifying code, update your persistent memory:
+1. Read `sandbox/memory/INDEX.md` to understand the memory structure
+2. Use the memory skill to add a journal entry documenting your plan:
+   - What you're changing, why, and how to test
+   - Then commit changes with `git add -A && git commit -m '<brief desc>'`
+   - NYX will auto-restart and re-execute the task with new code
+
 ## Response
 Return a clear summary of what you did and the result.""",
     )
@@ -79,6 +81,8 @@ def get_hotfixer_template(requirement: str) -> str:
         role_desc="Fix the following issue by modifying source code in the repo.",
         requirement=requirement,
         extra="""
+
+## Workflow
 
 ## Workflow
 1. Read the relevant source files to understand the problem
