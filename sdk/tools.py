@@ -154,5 +154,5 @@ _ALL_TOOL_DEFS = [
     ),
 ]
 
-ALL_TOOLS = [t.model_dump() for t in _ALL_TOOL_DEFS]  # dicts for API compatibility
+ALL_TOOLS = [t.model_dump(exclude_none=True) for t in _ALL_TOOL_DEFS]  # dicts for API compatibility
 ALL_TOOL_NAMES = frozenset(t.function.name for t in _ALL_TOOL_DEFS)
