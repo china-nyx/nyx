@@ -85,19 +85,4 @@ def get_hotfixer_template(requirement: str) -> str:
 First summarize what you changed, then list changes one line per file."""
 
 
-# ── Common paths (shared) ────────────────────────────────────────
 
-def get_common_paths() -> str:
-    """Get common paths string."""
-    return f"""Your working directory: {config.home}
-Repo: {config.repo}
-
-Everything under {config.home} is YOUR runtime workspace (read-write). Key subdirectories:
-  - {config.sandbox_dir}/ → your workspace for projects, research, data, and persistent notes
-  - skills/ → runtime skills (override built-in by name)
-    Built-in skills are loaded from the source repo at runtime.
-    Instance-specific skills go here and shadow built-in ones of the same name.
-  - task/ → task state (state, priority, requirement.md, result.md, sessions/)
-  - mailbox/inbox/ → incoming requirements (scheduler consumes these)
-
-You CAN modify NYX's own source code in {config.repo}/ to solve tasks."""
