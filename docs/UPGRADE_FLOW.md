@@ -1,63 +1,63 @@
-# NYX 升级流程 (Upgrade Flow)
+# NYX Upgrade Flow
 
-## 概述
+## Overview
 
-NYX 的升级流程采用简化的直接修改模式：
-- Solver/Hotfixer 直接修改主仓代码
-- Commit 后，Executor 检测 HEAD 变化 → 重启
-- 没有复杂的子任务机制
+NYX's upgrade flow uses a simplified direct modification approach:
+- Solver/Hotfixer directly modifies the main repo code
+- After committing, Executor detects HEAD changes → restart
+- No complex subtask mechanism
 
-## 为什么简化？
+## Why Simplified?
 
-**之前的 upgrader 子任务设计问题：**
-1. 增加复杂度：需要管理父子任务、状态流转
-2. 多数场景不需要区分"求解"和"升级"
-3. Solver 有能力修改代码，不需要强制限制
+**Problems with previous upgrader subtask design:**
+1. Added complexity: needed to manage parent-child tasks, state transitions
+2. Most scenarios don't need to distinguish "solve" vs "upgrade"
+3. Solver has full permissions to modify code, no need to restrict
 
-**简化后的优势：**
-1. 更简单：直接修改 + 提交
-2. 更灵活：Solver 可以做任何事情
-3. 更可靠：没有状态同步问题
+**Benefits of simplified design:**
+1. Simpler: direct modification + commit
+2. More flexible: Solver can do anything
+3. More reliable: No state synchronization issues
 
-## 当前流程
+## Current Flow
 
 ```
-1. Solver 运行
-   - 读取 skills
-   - 执行任务（可能修改代码）
-   - 提交 changes
+1. Solver runs
+   - Reads skills
+   - Executes task (may modify code)
+   - Commits changes
 
-2. Executor 检测
-   - 记录 HEAD
-   - 运行 solver
-   - 检测 HEAD 是否变化
+2. Executor detects
+   - Records HEAD
+   - Runs solver
+   - Checks if HEAD changed
 
-3. 重启
-   - 如果 HEAD 变化 → os.execv 重启
-   - 如果没变化 → 正常结束
+3. Restart
+   - If HEAD changed → os.execv restart
+   - If no change → normal exit
 ```
 
-## 文件结构
+## File Structure
 
 ```
 app/
-├── solver.py      ← 求解任务，可修改代码
-├── hotfixer.py    ← 热修复，修改代码
-├── executor.py    ← 执行 + 重启
-├── scheduler.py   ← 任务管理
-└── main.py        ← 主入口
+├── solver.py      ← Solve tasks, may modify code
+├── hotfixer.py    ← Hotfix, modifies code
+├── executor.py    ← Run + restart
+├── scheduler.py   ← Task management
+└── main.py        ← Main entry
 ```
 
-## Agent 通信
+## Agent Communication
 
-**无复杂通信**：
-- Solver 不需要返回特殊状态
-- Executor 只检测 HEAD 变化
-- 没有状态同步、子任务、父任务恢复
+**No complex communication:**
+- Solver doesn't return special status
+- Executor only detects HEAD changes
+- No state sync, subtasks, parent restoration
 
-**直接提交**：
+**Direct commit:**
 ```bash
 git add -A && git commit -m 'fix: brief description'
 ```
 
-Executor 检测到 HEAD 变化 → 重启。
+Executor detects HEAD change → restart.
