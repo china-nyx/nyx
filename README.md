@@ -8,20 +8,23 @@ projects, without a human in the loop.
 ## How it works
 
 ```
-requirement ─▶ evolve(solver) ─▶ solves task, modifies repo if needed
-                     │
-                     ├─ no code changes  ─▶ done
-                     └─ code changes     ─▶ commit → restart
+requirement ─▶ executor.run(solver) ─▶ solves task, modifies repo if needed
+                            │
+                            ├─ no code changes  ─▶ done
+                            └─ code changes     ─▶ commit → os.execv restart
 
-crash ─▶ boot catches exception ─▶ evolve(hotfixer) → fix code → restart
+crash ─▶ boot/main catches exception ─▶ self-heal → executor.run(hotfixer) → fix code → restart
 ```
 
 - **Solver** attempts the task with 4 base tools (`bash`, `read`, `write`, `edit`) and
   skills loaded from `skills/` (under cwd). Can modify repo source directly.
 - **Hotfixer** is a mini code-fix agent — 4 tools only, modifies repo source.
-  Used by boot self-heal for crash recovery.
-- **Evolver** wraps any agent session: records git HEAD before/after, commits + restarts if code changed.
-- **Boot** starts the agent. If anything fails (import error, crash), boot invokes hotfixer to fix the code.
+  Invoked by self-heal when NYX crashes.
+- **Executor** wraps any agent session: records git HEAD before/after the call,
+  commits + `os.execv` restarts if repo code changed. This is what enables
+  self-evolution — code changes take effect immediately on restart.
+- **Boot** starts the agent. If anything fails during startup (import error, crash),
+  boot invokes self-heal which calls hotfixer to fix the code.
 
 ## Architecture
 
@@ -57,7 +60,7 @@ NYX manages requirements as tasks with an OS-like scheduler:
 - Each requirement becomes a **task** with its own directory (`task/<tid>/`)
 - Tasks have states: `new` → `running` → `done`
 - The scheduler picks the next task by priority
-- All agent sessions run through `evolver.evolve()` — if repo code changes, auto-commit + restart
+- All agent sessions run through `executor.run()` — if repo code changes, auto-commit + `os.execv` restart
 
 ### Skills
 
@@ -83,7 +86,7 @@ To customize what self-reflect audits, place your own SKILL.md at `skills/self-r
 
 ## Safety model
 
-- Evolver controls all code changes — detects repo changes after agent sessions, commits + restarts.
+- Executor controls all code changes — detects repo HEAD changes after agent sessions, commits + `os.execv` restarts.
 - **Self-heal**: if NYX crashes at any point, boot catches the exception and invokes the hotfixer to fix the code.
 
 ## Running it
