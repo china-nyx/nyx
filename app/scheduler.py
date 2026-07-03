@@ -183,6 +183,29 @@ def mark_done(tid: str, result: str = "") -> None:
     _update_index()
 
 
+def resume_parent_if_done(tid: str) -> Optional[str]:
+    """If tid is a done upgrader task, resume its parent.
+
+    Args:
+        tid: The tid to check
+
+    Returns:
+        The parent tid if resumed, None otherwise
+    """
+    parent_tid = _read(tid, "parent_tid")
+    if not parent_tid:
+        return None
+    
+    parent_state = get_state(parent_tid)
+    if parent_state != "upgrade-waiting":
+        return None
+    
+    # Resume parent
+    set_state(parent_tid, "running")
+    logger.info(f"[sched] resumed parent {parent_tid} after upgrader {tid} done")
+    return parent_tid
+
+
 def create_upgrader_task(parent_tid: str, requirement: str) -> str:
     """Create an upgrader subtask for the given parent task.
 
