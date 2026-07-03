@@ -11,11 +11,34 @@ from pydantic import BaseModel, Field
 # ── LLM chat request ──────────────────────────────────────────────
 
 class ChatMessage(BaseModel):
-    """A single message in the chat conversation."""
+    """Base class for chat messages."""
     role: str
+
+
+class SystemMessage(ChatMessage):
+    """System message to set the assistant's behavior."""
+    role: str = "system"
+    content: str
+
+
+class UserMessage(ChatMessage):
+    """User message."""
+    role: str = "user"
+    content: str
+
+
+class AssistantMessage(ChatMessage):
+    """Assistant message."""
+    role: str = "assistant"
     content: str | None = None
     tool_calls: list["ToolCall"] | None = None
-    tool_call_id: str | None = None  # for tool-role messages
+
+
+class ToolMessage(ChatMessage):
+    """Tool result message."""
+    role: str = "tool"
+    tool_call_id: str
+    content: str
 
 
 class ChatRequest(BaseModel):

@@ -54,7 +54,7 @@ def _strip_think(text: str) -> str:
     return text.strip()
 
 
-def _prune_tool_output(tool_name: str, content: str, max_chars: int = 8000) -> str:
+def _prune_tool_output(name: str, content: str, max_chars: int = 8000) -> str:
     """Prune large tool outputs to save context tokens while preserving useful info."""
     if len(content) <= max_chars:
         return content
@@ -76,7 +76,7 @@ def _build_schema(tools: List[ToolDefinition], business_schema: Optional[Dict] =
     Schema structure:
     {
       "thought": "string",          // Reasoning process
-      "actions": [{...}],           // Tool calls (empty when done)
+      "tools": [{...}],           // Tool calls (empty when done)
       "result": {...}               // Final answer when no more tools needed
     }
 
@@ -103,7 +103,7 @@ def _build_schema(tools: List[ToolDefinition], business_schema: Optional[Dict] =
             "type": "string",
             "description": "Analyze the current situation and decide what to do next."
         },
-        "actions": {
+        "tools": {
             "type": "array",
             "description": "If you need to use tools, put them here. Otherwise leave empty.",
             "items": tool_items[0] if len(tool_items) == 1 else {"anyOf": tool_items},
@@ -114,7 +114,7 @@ def _build_schema(tools: List[ToolDefinition], business_schema: Optional[Dict] =
     if business_schema:
         properties["result"] = {
             "type": "object",
-            "description": "Final answer when no more tools are needed. Only provide when actions is empty.",
+            "description": "Final answer when no more tools are needed. Only provide when tools is empty.",
             **business_schema,
         }
 
@@ -126,7 +126,7 @@ def _build_schema(tools: List[ToolDefinition], business_schema: Optional[Dict] =
             "schema": {
                 "type": "object",
                 "properties": properties,
-                "required": ["thought", "actions"],
+                "required": ["thought", "tools"],
                 "additionalProperties": False,
             }
         }
@@ -141,9 +141,9 @@ def _extract_schema(response_format: ResponseFormat) -> Dict:
 def _parse_response(raw_text: str) -> ChatCompletionResponse:
     """Parse JSON text from merged-schema mode into ChatCompletionResponse.
 
-    Merged schema: {thought, actions, <business fields>}.
-    - actions non-empty → tool_calls (model needs to call tools)
-    - actions empty / missing → final result (business fields are the answer)
+    Merged schema: {thought, tools, <business fields>}.
+    - tools non-empty → tool_calls (model needs to call tools)
+    - tools empty / missing → final result (business fields are the answer)
     """
     import time
     # OpenAI-compatible ID: chatcmpl-<timestamp>-<random>
@@ -156,11 +156,11 @@ def _parse_response(raw_text: str) -> ChatCompletionResponse:
         # Invalid JSON — raise to trigger retry
         raise ValueError(f"Invalid JSON in merged-schema response: {raw_text[:200]}")
 
-    actions = parsed.get("actions") or []
-    if actions:
+    tools = parsed.get("tools") or []
+    if tools:
         # Model wants to call tools
         tool_calls = []
-        for i, action in enumerate(actions):
+        for i, action in enumerate(tools):
             tool_calls.append({
                 "id": f"call_{req_id[-6:]}_{i}",
                 "type": "function",
@@ -185,7 +185,7 @@ def _parse_response(raw_text: str) -> ChatCompletionResponse:
             usage=Usage(completion_tokens=0, prompt_tokens=0, total_tokens=0),
         )
 
-    # No actions → final result (result must be present per schema)
+    # No tools → final result (result must be present per schema)
     result = parsed["result"]
     if isinstance(result, dict):
         content = json.dumps(result, ensure_ascii=False)
