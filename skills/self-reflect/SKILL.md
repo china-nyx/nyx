@@ -218,7 +218,7 @@ done
 
 #### 3d: Note Skill Improvements
 
-If a skill's steps can be clearer, more robust, or more efficient, update them directly via `edit` (runtime skills) or modify the repo version (evolver will auto-commit + restart).
+If a skill's steps can be clearer, more robust, or more efficient, update them directly via `edit` (runtime skills) or modify the repo version (it will commit and executor will restart).
 
 ---
 
@@ -374,7 +374,7 @@ Ask yourself:
 If you discover improvements to this skill's procedure, **apply them directly** — no restart needed.
 
 **How it works:**
-The writable runtime path is `skills/self-reflect/SKILL.md` (under cwd). The built-in in the repo can be modified directly — evolver will auto-commit + restart.
+The writable runtime path is `skills/self-reflect/SKILL.md` (under cwd). The built-in in the repo can be modified directly — it will commit and executor will restart.
 
 1. **Check if runtime override exists:**
    ```bash
@@ -395,7 +395,7 @@ The writable runtime path is `skills/self-reflect/SKILL.md` (under cwd). The bui
 - Clarify ambiguous instructions
 
 **Modifying repo code:**
-You can modify Python files in the repo directly — evolver will detect changes and auto-commit + restart. SKILL.md changes are done directly via `write` or `edit`.
+You can modify Python files in the repo directly — executor will detect changes and auto-commit + restart. SKILL.md changes are done directly via `write` or `edit`.
 
 ---
 
@@ -471,7 +471,7 @@ PRIORITY: <N>
 - Don't duplicate: if an active task already addresses the issue, skip it
 - Be specific in the description — include file paths, line numbers, concrete steps
 - After creating a task, log it in `sandbox/memory/journal/current.md` ("Created inbox task: 80-fix-doc-drift.md")
-- If the fix requires changing NYX source code, modify it directly (evolver will auto-commit + restart)
+- If the fix requires changing NYX source code, modify it directly (it will commit and executor will restart)
 
 ## Output Format
 
