@@ -182,17 +182,12 @@ def _parse_response(raw_text: str) -> ChatCompletionResponse:
             usage=Usage(completion_tokens=0, prompt_tokens=0, total_tokens=0),
         )
 
-    # No actions → final result
-    result = parsed.get("result")
+    # No actions → final result (result must be present per schema)
+    result = parsed["result"]
     if isinstance(result, dict):
         content = json.dumps(result)
-    elif result is not None:
-        content = str(result)
     else:
-        # Fallback: collect non-meta fields
-        business = {k: v for k, v in parsed.items()
-                    if k not in ("thought", "actions")}
-        content = json.dumps(business) if business else parsed.get("thought", "")
+        content = str(result)
 
     return ChatCompletionResponse(
         id=req_id, object="chat.completion", model="merged",
