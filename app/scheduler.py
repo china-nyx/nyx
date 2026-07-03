@@ -254,10 +254,13 @@ def ingest_inbox() -> List[str]:
         except ValueError:
             pass
 
-        tid = create_task(content, priority=priority, source_file=f.name)
-        f.unlink(missing_ok=True)
-        created.append(tid)
-        logger.info(f"[sched] ingested {f.name} → task {tid} (pri={priority})")
+        try:
+            tid = create_task(content, priority=priority, source_file=f.name)
+            f.unlink(missing_ok=True)
+            created.append(tid)
+            logger.info(f"[sched] ingested {f.name} → task {tid} (pri={priority})")
+        except Exception:
+            logger.exception(f"[sched] failed to create task from {f.name}, keeping file")
     return created
 
 

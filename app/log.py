@@ -50,6 +50,8 @@ def setup_logging(*, log_file, keep_days, repo_path):
         log_file, when="midnight", interval=1,
         backupCount=keep_days, encoding="utf-8"
     )
+    # Line-buffered so logs are never lost on crash / re-exec
+    fh.stream.reconfigure(line_buffering=True)
     fh.setFormatter(fmt)
     fh.addFilter(vf)
     root.addHandler(fh)
