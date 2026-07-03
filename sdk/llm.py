@@ -276,8 +276,7 @@ class LLM:
             _msgs.append(d)
         _merged = bool(tools and response_format)
 
-        mode = "merged-schema" if _merged else "native-tools" if tools else "chat"
-        logger.info(f"[llm] chat() mode={mode}, msgs={len(_msgs)}, temp={temperature}, max_tokens={max_tokens}")
+
 
         if _merged:
             business_schema = _extract_schema(response_format)

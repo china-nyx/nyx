@@ -108,8 +108,6 @@ def run_agent(client: ChatClient, messages: list[ChatMessage],
     msgs = list(messages)
     _initial_len = len(msgs)
 
-    logger.info(f"[agent] start: {_initial_len} initial msgs, model={getattr(client, 'model', '?')}, temp={temperature}")
-
     # Duplicate detection: track MD5 hashes of tool outputs
     _seen_outputs: Set[str] = set()
     _dup_count = 0
@@ -146,7 +144,6 @@ def run_agent(client: ChatClient, messages: list[ChatMessage],
         if not tcs:
             content = _strip_think(message.content or "")
             stop_reason = resp.choices[0].finish_reason
-            logger.info(f"[agent] done after {_iteration} iterations, output={len(content)} chars")
             return {
                 "role": "assistant",
                 "content": content,
