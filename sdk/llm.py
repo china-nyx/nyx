@@ -228,13 +228,19 @@ class LLM:
             headers["Authorization"] = f"Bearer {self.api_key}"
 
         last_err = None
+        body_json = json.dumps(body)
         for attempt in range(1, 4):
             req = urllib.request.Request(
-                self.url, data=json.dumps(body).encode(),
+                self.url, data=body_json.encode(),
                 headers=headers, method="POST")
             try:
                 with self._opener.open(req, timeout=self.timeout) as r:
                     return json.loads(r.read().decode())
+            except urllib.error.HTTPError as e:
+                err_body = e.read().decode() if hasattr(e, 'read') else ''
+                logger.error(f"[llm] HTTP {e.code}: {err_body[:500]}")
+                last_err = e
+                raise  # don't retry on 400-level errors
             except (socket.timeout, urllib.error.URLError) as e:
                 last_err = e
                 if attempt < 3:
@@ -254,7 +260,13 @@ class LLM:
         answer in a single response.  The caller receives a standard
         ``ChatCompletionResponse`` regardless of the internal mode.
         """
-        _msgs = [m.model_dump(exclude_none=True) for m in messages]
+        _msgs = []
+        for m in messages:
+            d = m.model_dump(exclude_none=True)
+            # Ensure non-assistant roles always have 'content' (llama-server rejects missing content)
+            if d.get("role") != "assistant" and "content" not in d:
+                d["content"] = ""
+            _msgs.append(d)
         _merged = bool(tools and response_format)
 
         if _merged:

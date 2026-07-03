@@ -13,8 +13,15 @@ from pydantic import BaseModel, Field
 # ── LLM chat request ──────────────────────────────────────────────
 
 class ChatMessage(BaseModel):
-    """Base class for chat messages."""
+    """Base class for chat messages.
+
+    Includes all fields that subclasses may set so model_dump() never drops
+    content or tool_call_id when the caller uses the base class directly.
+    """
     role: str
+    content: Optional[str] = None
+    tool_call_id: Optional[str] = None
+    tool_calls: Optional[list[ToolCall]] = None
 
 
 class SystemMessage(ChatMessage):
