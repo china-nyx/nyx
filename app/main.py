@@ -140,7 +140,7 @@ def run():
                 agent.tick()
         except _Shutdown:
             pass
-        except Exception:
+        except Exception as exc:
             logger.exception("agent crashed, starting self-heal")
             from app.self_heal import run as self_heal_run
-            self_heal_run()
+            self_heal_run(exc)
