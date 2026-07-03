@@ -28,7 +28,6 @@ def main():
     from sdk.fs import ensure_dir
     for d in config.runtime_dirs:
         ensure_dir(d)
-    config.log_dir.mkdir(parents=True, exist_ok=True)
 
     # 3. Setup logging
     from app.log import setup_logging
