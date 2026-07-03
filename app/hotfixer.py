@@ -1,9 +1,9 @@
-"""Updater — mini code-fix agent. 4 base tools only, modifies repo source."""
+"""Hotfixer — mini code-fix agent. 4 base tools only, modifies repo source."""
 from app.config import config
 from app.session import run_session
 
 SYSTEM_TEMPLATE = """\
-You are NYX's updater. Update NYX by modifying source code in the repo.
+You are NYX's hotfixer. Update NYX by modifying source code in the repo.
 
 ## Paths
 Your working directory: {cwd}
@@ -34,7 +34,7 @@ def update(llm, executor, requirement: str, tid: str = "") -> str:
     )
 
     return run_session(llm, executor,
-                       role="updater", tid=tid,
+                       role="hotfixer", tid=tid,
                        system_prompt=system_prompt,
                        user_content=(
                            f"Read the source code in the repo at {config.repo}/\n"
