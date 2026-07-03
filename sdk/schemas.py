@@ -51,6 +51,7 @@ class ChatRequest(BaseModel):
     tools: list["ToolDefinition"] | None = None
     response_format: "ResponseFormat" | None = None
     tool_choice: str | dict | None = None
+    parallel_tool_calls: bool = False  # Default: sequential tool calls
 
 
 # ── LLM response ──────────────────────────────────────────────────
