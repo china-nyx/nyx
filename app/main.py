@@ -147,7 +147,7 @@ class Agent:
 
         if status == "needs_upgrade":
             # Create updater subtask and mark parent waiting
-            scheduler.mark_done(tid, content)
+            scheduler.create_upgrader_task(tid, content)
             return "needs_upgrade"
 
         # No code change — mark done here (executor marks done when restarting)
