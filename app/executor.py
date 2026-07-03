@@ -23,7 +23,7 @@ def _re_exec(tid: str = None, result: str = None):
 
 
 def run(agent_fn, tid: str = None):
-    """Run an agent callable. If repo changed, commit + restart."""
+    """Run an agent callable. If HEAD changed, restart."""
     g = Git(config.repo)
 
     pre_head = g.short()
@@ -34,11 +34,6 @@ def run(agent_fn, tid: str = None):
     post_head = g.short()
     if post_head != pre_head:
         logger.info(f"[executor] HEAD changed ({pre_head} → {post_head}), restarting")
-        _re_exec(tid, result)
-    elif g.dirty():
-        msg = _extract_message(result)
-        g.commit(f"nyx: {msg}")
-        logger.info(f"[executor] committed dirty changes, restarting")
         _re_exec(tid, result)
 
     return result
