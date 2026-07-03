@@ -1,9 +1,9 @@
 """Agent — the app's main entry point.
 
 OS process model: each requirement is a task with its own persistent directory.
-The scheduler picks the next task, agent executes it via executor.run_with_memory().
+The scheduler picks the next task, agent executes it via executor.run().
 
-    inbox/*.md → scheduler creates task/ → agent picks → executor.run_with_memory(solver) → restart if HEAD changed
+    inbox/*.md → scheduler creates task/ → agent picks → executor.run(solver) → restart if HEAD changed
 """
 import logging
 import os
@@ -110,7 +110,7 @@ class Agent:
         return None
 
     def _execute_task(self, tid: str) -> str:
-        """Execute a task via executor.run_with_memory(solver.solve)."""
+        """Execute a task via executor.run(solver.solve)."""
         from app import scheduler, executor
 
         requirement = scheduler.prepare_task(tid)
@@ -123,9 +123,17 @@ class Agent:
         if prev_memory:
             requirement = f"{requirement}\n\n## Previous Session Memory\n{prev_memory}"
 
-        result = executor.run_with_memory(
+        def on_code_change(result: str):
+            """Save memory when code was modified."""
+            try:
+                mem_path.write_text(result, encoding="utf-8")
+                logger.info(f"[{tid}] saved memory to {mem_path}")
+            except Exception:
+                pass
+
+        result = executor.run(
             lambda: solver.solve(self.llm, self._executor, ALL_TOOLS, requirement, tid=tid),
-            tid=tid)
+            on_change=on_code_change)
 
         if not result:
             return "no result yet; will retry"
