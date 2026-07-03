@@ -154,7 +154,7 @@ def _parse_response(raw_text: str) -> ChatCompletionResponse:
         parsed = json.loads(raw_text)
     except json.JSONDecodeError:
         # Invalid JSON — raise to trigger retry
-        raise ValueError(f"Invalid JSON in merged-schema response: {raw_text[:200]}")
+        raise ValueError(f"Invalid JSON in merged-schema response: {raw_text}")
 
     tools = parsed.get("tools") or []
     if tools:
@@ -185,7 +185,9 @@ def _parse_response(raw_text: str) -> ChatCompletionResponse:
             usage=Usage(completion_tokens=0, prompt_tokens=0, total_tokens=0),
         )
 
-    # No tools → final result (result must be present per schema)
+    # No tools → final result (thought is required, result should be present)
+    if "result" not in parsed:
+        raise ValueError(f"Schema violation: missing 'result' field. Full response: {raw_text[:300]}")
     result = parsed["result"]
     if isinstance(result, dict):
         content = json.dumps(result, ensure_ascii=False)
