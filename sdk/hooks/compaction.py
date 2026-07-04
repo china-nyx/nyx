@@ -8,9 +8,7 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from sdk.agent_hooks import HookContext, TransformContextResult
@@ -84,10 +82,10 @@ def should_compact(context_tokens: int, msg_count: int,
 _DEFAULT_COMPACT_INSTRUCTION = """\
 [CONTEXT WINDOW ALERT] Your context is approaching the limit.
 
-Please organize your working memory:
-1. Read your current memory files under `{memory_dir}/` (INDEX.md, identity.md, goals/, issues/, journal/)
-2. Update them with what you've learned and accomplished so far
-3. When done, return a concise summary of the session's progress
+Please provide a concise summary of the session's progress so far:
+- What task(s) you are working on
+- Key decisions made and actions taken
+- Current status and next steps
 
 After this, your conversation history will be replaced with just your summary."""
 
@@ -141,9 +139,6 @@ class DefaultCompactionHook:
         self._last_compaction_msg_count = 0
         self._retry_short_summary = False
 
-    def _memory_dir(self) -> str:
-        return str(Path(os.getcwd()) / "memory")
-
     def _estimate_tokens(self, messages: List[ChatMessage]) -> int:
         total = 0
         for m in messages:
@@ -193,9 +188,7 @@ class DefaultCompactionHook:
         )
 
         if not has_instruction:
-            memory_dir = self._memory_dir()
-            instruction = _DEFAULT_COMPACT_INSTRUCTION.format(memory_dir=memory_dir)
-            new_msgs = list(messages) + [ChatMessage(role="user", content=instruction)]
+            new_msgs = list(messages) + [ChatMessage(role="user", content=_DEFAULT_COMPACT_INSTRUCTION)]
             rf = _compact_response_format()
             return TransformContextResult(messages=new_msgs, response_format=rf)
 
