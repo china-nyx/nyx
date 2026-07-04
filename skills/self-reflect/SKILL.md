@@ -337,6 +337,32 @@ done
 
 ---
 
+### Step 4f: Analyze Recent Failures (Error Classification)
+
+Use the error classifier to understand patterns in recent command failures. This helps identify systemic issues vs one-off problems.
+
+```bash
+# Classify a recent failure message
+python3 sandbox/toolbox/helpers/error_classifier.py "connection refused while connecting to api.example.com"
+
+# Or classify multiple errors from task logs
+for msg in "timeout waiting for response" "permission denied: /root/secret" "No such file or directory"; do
+    echo "--- $msg ---"
+    python3 sandbox/toolbox/helpers/error_classifier.py "$msg" 2>/dev/null || true
+done
+```
+
+**What to look for:**
+- **Transient errors recurring**: May indicate infrastructure issues (network, API instability) — consider adding retry logic or switching endpoints
+- **Permission errors**: May indicate misconfigured paths or missing sudo — fix once and update scripts
+- **Not-found errors**: May indicate stale paths in scripts/cron — update references
+- **Syntax errors**: Script bugs that need fixing, not retrying
+- **Resource errors**: System limits being hit — may need capacity adjustment
+
+**Action:** If you find recurring transient failures in task execution, note them in `memory/issues/open.md` and consider creating an inbox task to add retry logic (using `sandbox/toolbox/helpers/retry_utils.py`).
+
+---
+
 ### Step 5: Audit Task System (`task/`)
 
 #### 5a: Active Tasks — Progress Assessment
