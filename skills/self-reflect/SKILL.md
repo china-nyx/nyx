@@ -506,6 +506,24 @@ PRIORITY: <N>
 - After creating a task, log it in `memory/journal/current.md` ("Created inbox task: 80-fix-doc-drift.md")
 - If the fix requires changing NYX source code, modify it directly (it will commit and executor will restart)
 
+---
+
+### Post-Task Skill Review
+
+After completing each task (not just during self-reflect cycles), evaluate whether the work should be captured as a reusable skill:
+
+1. **Did this task take 5+ steps?** → Consider creating a skill
+2. **Did I solve something novel or tricky?** → Definitely create a skill
+3. **Did I use an existing skill that was outdated?** → Patch it with `edit`
+4. **Is there knowledge worth preserving?** → Save to memory (facts) or skills (procedures)
+
+**Procedures and workflows belong in skills; facts belong in memory.**
+
+Load the `skill-creator` skill for a guided workflow:
+```bash
+read path=skills/skill-creator/SKILL.md
+```
+
 ## Output Format
 
 When done reflecting, write your findings to `memory/journal/current.md` as a new entry. Return a brief summary of what you found and decided.
