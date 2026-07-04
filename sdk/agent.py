@@ -14,7 +14,7 @@ from sdk.agent_hooks import (
     CompositeHooks,
     HookContext,
 )
-from sdk.compaction import clamp_max_tokens, estimate_context_tokens
+from sdk.hooks.compaction import clamp_max_tokens, estimate_context_tokens
 from sdk.hooks import (  # noqa: F401
     DefaultCompactionHook,
     DuplicateOutputPruner,
@@ -69,7 +69,7 @@ _DEFAULT_CONTEXT_WINDOW = 128_000
 
 def _build_default_hooks(on_step, terminal_tools, compaction_settings):
     """Build the default hook chain that reproduces legacy behaviour."""
-    from sdk.compaction import CompactionSettings
+    from sdk.hooks.compaction import CompactionSettings
 
     parts = [RepetitiveCallGuard(), DuplicateOutputPruner()]
     if terminal_tools:

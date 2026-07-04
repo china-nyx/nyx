@@ -1,25 +1,82 @@
-"""Default compaction hook — implemented using only generic hooks.
+"""Compaction — token estimation, trigger detection, and hook implementation.
 
-Uses ``transform_context`` to detect when context is too large, inject the
-compaction instruction message, and override response_format.
-Uses ``should_continue_after_text`` to intercept the summary text response,
-parse it, replace history, and continue looping.
-
-No loop-specific compaction code needed.
+Pure functions (estimate_tokens, clamp_max_tokens, should_compact) are used by
+agent.py for context management.  DefaultCompactionHook plugs into the agent loop
+via transform_context + should_continue_after_text.
 """
 from __future__ import annotations
 
 import json
 import logging
 import os
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from sdk.agent_hooks import HookContext, TransformContextResult
-from sdk.compaction import CompactionSettings, estimate_tokens, should_compact
 from sdk.schemas import ChatMessage, JsonSchema, ResponseFormat
 
 logger = logging.getLogger(__name__)
+
+
+# ── Settings (injected by caller) ───────────────────────────────────
+
+@dataclass(frozen=True)
+class CompactionSettings:
+    """Knobs controlling compaction behaviour."""
+
+    enabled: bool = True
+    reserve_tokens: int = 16384       # trigger when remaining < this many tokens
+    compact_at: int = 100             # msg_count threshold to trigger compaction
+    cooldown_messages: int = 10       # min new msgs since last compaction before re-trigger
+
+
+# ── Token estimation (pure functions) ───────────────────────────────
+
+def estimate_tokens(text: str) -> int:
+    """Estimate token count from text using chars/4 heuristic."""
+    return max(1, len(text) // 4) if text else 0
+
+
+def estimate_context_tokens(messages: List[Dict]) -> int:
+    """Sum estimated tokens across all messages in the conversation."""
+    total = 0
+    for msg in messages:
+        content = msg.get("content", "") or ""
+        total += estimate_tokens(content)
+        for tc in msg.get("tool_calls") or []:
+            fn = tc.get("function", {})
+            total += estimate_tokens(fn.get("arguments", "") or "")
+    return total
+
+
+def clamp_max_tokens(requested: int, context_tokens: int, context_window: int) -> int:
+    """Clamp max_tokens so the total (context + output) stays within the window.
+
+    Leaves a 4096-token safety margin beyond the reserve to avoid OOM / truncation.
+    Returns at least 256 so we never request zero tokens.
+    """
+    headroom = context_window - context_tokens - 4096
+    return max(256, min(requested, headroom))
+
+
+def should_compact(context_tokens: int, msg_count: int,
+                   context_window: int, settings: CompactionSettings,
+                   last_compaction_msg_count: int = 0) -> bool:
+    """Check if compaction should trigger based on token count or message count."""
+    if not settings.enabled:
+        return False
+
+    # Token-based trigger (always urgent — no cooldown)
+    token_triggered = context_tokens > (context_window - settings.reserve_tokens)
+
+    # Message-count trigger (subject to cooldown)
+    msg_triggered = msg_count > settings.compact_at
+    if msg_triggered and last_compaction_msg_count > 0:
+        if (msg_count - last_compaction_msg_count) < settings.cooldown_messages:
+            msg_triggered = False
+
+    return token_triggered or msg_triggered
 
 
 # ── Default compaction instruction ───────────────────────────────────

@@ -8,7 +8,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from sdk.compaction import (
+from sdk.hooks.compaction import (
     CompactionSettings,
     estimate_tokens,
     estimate_context_tokens,

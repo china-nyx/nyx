@@ -5,8 +5,7 @@ from pathlib import Path
 
 from pydantic import BaseModel, Field, field_validator
 
-# Shared with sdk/compaction.py — single source of truth for compaction knobs.
-from sdk.compaction import CompactionSettings
+from sdk.hooks.compaction import CompactionSettings
 
 
 class Config(BaseModel):
