@@ -246,7 +246,8 @@ class LLM:
                 err_body = e.read().decode() if hasattr(e, 'read') else ''
                 logger.error(f"[llm] HTTP {e.code}: {err_body[:500]}")
                 last_err = e
-                raise  # don't retry on 400-level errors
+                if e.code < 500:
+                    raise  # don't retry on client errors (4xx)
             except (socket.timeout, urllib.error.URLError) as e:
                 last_err = e
                 if attempt < 3:
