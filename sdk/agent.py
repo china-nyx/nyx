@@ -1,7 +1,7 @@
 """Agent loop — tool-calling agent session.
 
 Thin orchestrator: calls hooks at key points.  Compaction is implemented
-entirely by hooks (sdk/hooks/default_compaction.py) using only the generic
+entirely by hooks (sdk/hooks/compaction.py) using only the generic
 ``transform_context`` hook — no compaction-specific code in this file.
 """
 import json
