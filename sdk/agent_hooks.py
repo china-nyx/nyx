@@ -35,26 +35,14 @@ class AfterToolCallResult:
     terminate: bool = False             # stop agent after this batch
 
 
-@dataclass(frozen=True)
-class CompactionInstruction:
-    """Return from build_compaction_instruction to customise compaction mode.
+@dataclass
+class TransformContextResult:
+    """Return from transform_context to modify messages/response_format before the LLM call.
 
-    The loop uses *instruction* as the user message injected into history,
-    and *response_format* as the JSON schema passed to the LLM.
-    Return ``None`` to keep the built-in defaults.
+    Omitted fields keep their current values.
     """
-    instruction: str
-    response_format: Optional[Dict] = None
-
-
-@dataclass(frozen=True)
-class CompactionApplyResult:
-    """Return from apply_compaction_summary to replace history after compaction.
-
-    *messages* is the new message list (typically ``initial_msgs + [summary_msg]``).
-    Return ``None`` to keep the built-in behaviour.
-    """
-    messages: List[ChatMessage]
+    messages: Optional[List[ChatMessage]] = None   # replace message history
+    response_format: Optional[Any] = None           # override response_format for this turn
 
 
 # ── Hook context (snapshot passed to each hook) ───────────────────────
@@ -84,14 +72,15 @@ class AgentHooks(Protocol):
     def should_stop_after_turn(self, messages: List[ChatMessage],
                                ctx: HookContext) -> bool: ...
 
-    # ── Compaction hooks ─────────────────────────────────────────────
-    def should_compact_hook(self, context_tokens: int, msg_count: int,
-                            context_window: int,
-                            last_compaction_msg_count: int) -> Optional[bool]: ...
-    def build_compaction_instruction(self, memory_dir: str,
-                                     messages: List[ChatMessage]) -> Optional[CompactionInstruction]: ...
-    def apply_compaction_summary(self, raw_content: str,
-                                 initial_messages: List[ChatMessage]) -> Optional[CompactionApplyResult]: ...
+    # ── Context transform (before each LLM call) ─────────────────────
+    def transform_context(self, messages: List[ChatMessage],
+                          response_format: Optional[Any],
+                          ctx: HookContext) -> Optional[TransformContextResult]: ...
+
+    # ── Text response intercept (before loop exits on text) ──────────
+    def should_continue_after_text(self, content: str,
+                                   messages: List[ChatMessage],
+                                   ctx: HookContext) -> Optional[List[ChatMessage]]: ...
 
     # ── Observer (read-only) ─────────────────────────────────────────
     def on_event(self, event_type: str, data: Dict[str, Any]): ...
@@ -143,33 +132,31 @@ class CompositeHooks:
                 return True
         return False
 
-    # ── Compaction hooks (first non-None wins) ───────────────────────
+    # ── Context transform (chain: each hook sees previous output) ────
 
-    def should_compact_hook(self, context_tokens: int, msg_count: int,
-                            context_window: int,
-                            last_compaction_msg_count: int) -> Optional[bool]:
+    def transform_context(self, messages: List[ChatMessage],
+                          response_format: Optional[Any],
+                          ctx: HookContext) -> Optional[TransformContextResult]:
+        cur_msgs = messages
+        cur_rf = response_format
         for h in self._hooks:
-            r = getattr(h, 'should_compact_hook', lambda *a: None)(
-                context_tokens, msg_count, context_window,
-                last_compaction_msg_count)
-            if r is not None:
-                return r
+            r = getattr(h, 'transform_context', lambda *a: None)(cur_msgs, cur_rf, ctx)
+            if r:
+                if r.messages is not None:
+                    cur_msgs = r.messages
+                if r.response_format is not None:
+                    cur_rf = r.response_format
+        if cur_msgs is not messages or cur_rf is not response_format:
+            return TransformContextResult(messages=cur_msgs, response_format=cur_rf)
         return None
 
-    def build_compaction_instruction(self, memory_dir: str,
-                                     messages: List[ChatMessage]) -> Optional[CompactionInstruction]:
-        for h in self._hooks:
-            r = getattr(h, 'build_compaction_instruction', lambda *a: None)(
-                memory_dir, messages)
-            if r is not None:
-                return r
-        return None
+    # ── Text response intercept (first non-None wins) ────────────────
 
-    def apply_compaction_summary(self, raw_content: str,
-                                 initial_messages: List[ChatMessage]) -> Optional[CompactionApplyResult]:
+    def should_continue_after_text(self, content: str,
+                                   messages: List[ChatMessage],
+                                   ctx: HookContext) -> Optional[List[ChatMessage]]:
         for h in self._hooks:
-            r = getattr(h, 'apply_compaction_summary', lambda *a: None)(
-                raw_content, initial_messages)
+            r = getattr(h, 'should_continue_after_text', lambda *a: None)(content, messages, ctx)
             if r is not None:
                 return r
         return None

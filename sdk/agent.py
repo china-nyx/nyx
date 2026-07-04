@@ -1,33 +1,26 @@
 """Agent loop — tool-calling agent session.
 
-Thin orchestrator: calls hooks at key points, delegates compaction logic.
-All behavioural extensions live in ``sdk/hooks/<name>.py`` (one per file).
+Thin orchestrator: calls hooks at key points.  Compaction is implemented
+entirely by hooks (sdk/hooks/default_compaction.py) using only the generic
+``transform_context`` hook — no compaction-specific code in this file.
 """
 import json
 import logging
-import os
 import time
-from pathlib import Path
 from typing import Callable, Dict, List, Optional
 
 from sdk.agent_hooks import (
     AgentHooks,
-    CompactionApplyResult,
     CompositeHooks,
     HookContext,
 )
+from sdk.compaction import clamp_max_tokens, estimate_context_tokens
 from sdk.hooks import (  # noqa: F401
     DefaultCompactionHook,
     DuplicateOutputPruner,
     RepetitiveCallGuard,
     StepLogger,
     TerminalToolHook,
-)
-from sdk.hooks.default_compaction import _default_compact_response_format  # noqa: F401
-from sdk.compaction import (
-    CompactionSettings,
-    clamp_max_tokens,
-    estimate_context_tokens,
 )
 from sdk.llm import _prune_tool_output, _strip_think
 from sdk.schemas import (
@@ -40,12 +33,7 @@ logger = logging.getLogger(__name__)
 
 
 class ChatClient:
-    """Minimal interface required by run_agent to talk to the LLM.
-
-    Implemented by sdk.llm.LLM.  The chat() method must accept the same
-    keyword arguments that run_agent passes: temperature, max_tokens,
-    tools (list of tool definition dicts), and response_format.
-    """
+    """Minimal interface required by run_agent to talk to the LLM."""
     model: str
 
     def chat(self, messages: list[ChatMessage], *, temperature: float,
@@ -80,6 +68,8 @@ _DEFAULT_CONTEXT_WINDOW = 128_000
 
 def _build_default_hooks(on_step, terminal_tools, compaction_settings):
     """Build the default hook chain that reproduces legacy behaviour."""
+    from sdk.compaction import CompactionSettings
+
     parts = [RepetitiveCallGuard(), DuplicateOutputPruner()]
     if terminal_tools:
         parts.append(TerminalToolHook(terminal_tools))
@@ -96,20 +86,21 @@ def run_agent(client: ChatClient, messages: list[ChatMessage],
               tools: List[Dict] = None,
               terminal_tools: Optional[set] = None,
               response_format: Optional[Dict] = None,
-              compaction_settings: CompactionSettings = None,
+              compaction_settings=None,
               context_window: int = _DEFAULT_CONTEXT_WINDOW,
               hooks: AgentHooks = None) -> Dict:
     """Tool-calling agent loop with pluggable hooks.
 
-    Runs until the model returns a text response (no tool calls).  When the message
-    history grows too large for the context window, compaction mode is entered:
-    a ``{summary: string}`` response schema is passed so the model organises its
-    memory and returns a compact summary that replaces all old messages.
+    Runs until the model returns a text response (no tool calls).
+
+    All behavioural extensions — repetitive guard, duplicate pruning,
+    compaction, terminal tools — are implemented as hooks via
+    ``transform_context``, ``before_tool_call``, ``after_tool_call``,
+    ``should_stop_after_turn``.
 
     Args:
-        hooks: Optional AgentHooks to intercept tool calls, modify results, etc.
-               If None, default hooks are built from on_step/terminal_tools
-               (repetitive guard + duplicate pruning + step logging).
+        hooks: Optional AgentHooks to intercept agent loop events.
+               If None, default hooks are built from on_step/terminal_tools/compaction_settings.
 
     Returns:
         assistant message dict with "content" key (from API or synthesised).
@@ -118,17 +109,10 @@ def run_agent(client: ChatClient, messages: list[ChatMessage],
     _response_format = response_format
     _context_window = context_window
     msgs = list(messages)
-    _initial_len = len(msgs)
 
     # Build default hooks for backward compatibility when caller passes None
     if hooks is None:
-        hooks = _build_default_hooks(on_step, terminal_tools,
-                                     compaction_settings or CompactionSettings())
-
-    # ── Compaction state (managed by loop, hooks supply behaviour) ────
-    _in_compaction_mode = False
-    _compaction_response_format: Optional[Dict] = None
-    _last_compaction_msg_count = 0
+        hooks = _build_default_hooks(on_step, terminal_tools, compaction_settings)
 
     def _emit(event_type: str, data: Dict):
         hooks.on_event(event_type, data)
@@ -136,15 +120,26 @@ def run_agent(client: ChatClient, messages: list[ChatMessage],
     _iteration = 0
     while True:
         _iteration += 1
+        ctx = HookContext(messages=msgs, tools=tools or [], iteration=_iteration)
+
+        # ── transform_context hook (before each LLM call) ────────────
+        # Hooks can modify messages (e.g. inject compaction instruction,
+        # prune old history) and override response_format for this turn.
+        _active_rf = _response_format
+        tcr = hooks.transform_context(msgs, _active_rf, ctx)
+        if tcr:
+            if tcr.messages is not None:
+                msgs = tcr.messages
+            if tcr.response_format is not None:
+                _active_rf = tcr.response_format
+
+        # Refresh ctx after transform (msgs may have changed)
+        ctx = HookContext(messages=msgs, tools=tools or [], iteration=_iteration)
+
         _context_tokens = estimate_context_tokens(_msgs_to_dicts(msgs))
         _clamped_max = clamp_max_tokens(4096, _context_tokens, _context_window)
 
         logger.debug(f"[agent] iter {_iteration}: msgs={len(msgs)}, est_tokens={_context_tokens}, max_tokens={_clamped_max}")
-
-        # Use compaction response_format when in compaction mode
-        _active_rf = (
-            _compaction_response_format if _in_compaction_mode else _response_format
-        )
 
         _emit("turn_start", {"iteration": _iteration})
 
@@ -163,43 +158,16 @@ def run_agent(client: ChatClient, messages: list[ChatMessage],
         message = resp.choices[0].message
         tcs = message.tool_calls or []
 
-        # ── No tool calls → exit (or compaction mode) ────────────────
+        # ── No tool calls → exit (or continue via hook) ───────────────
         if not tcs:
             content = _strip_think(message.content or "")
 
-            # Compaction mode: hook parses summary and replaces history
-            if _in_compaction_mode:
-                apply_result = hooks.apply_compaction_summary(content, messages)
-                if apply_result is None:
-                    # Fallback: built-in parse (same as before for safety)
-                    _summary = content
-                    try:
-                        _parsed = json.loads(content)
-                        _summary = _parsed.get("summary", content)
-                    except (json.JSONDecodeError, TypeError):
-                        pass
-                    if not _summary or len(_summary.strip()) < 20:
-                        msgs.append(ChatMessage(
-                            role="user",
-                            content="Your summary is too short. Please provide a meaningful "
-                                    "summary of the session's progress and call result again."))
-                        continue
-                    apply_result = CompactionApplyResult(
-                        messages=msgs[:_initial_len] + [ChatMessage(
-                            role="user",
-                            content=f"[COMPACTED HISTORY]\n{_summary}\n\n"
-                                    f"Continue working from where you left off.")])
-
-                _in_compaction_mode = False
-                _compaction_response_format = None
-                msgs = apply_result.messages
-                _last_compaction_msg_count = len(msgs)
-                logger.info(
-                    f"[compaction] done, msgs now={len(msgs)}"
-                )
+            # Generic hook: allow hooks to intercept text response and continue
+            new_msgs = hooks.should_continue_after_text(content, msgs, ctx)
+            if new_msgs is not None:
+                msgs = new_msgs
                 continue
 
-            # Normal session exit
             stop_reason = resp.choices[0].finish_reason
             _emit("turn_end", {"content": content})
             return {
@@ -214,8 +182,6 @@ def run_agent(client: ChatClient, messages: list[ChatMessage],
         # ── Tool calls → execute with hooks ───────────────────────────
         msgs.append(ChatMessage(role=message.role, content=message.content,
                                  tool_calls=[tc.model_dump() for tc in tcs] if tcs else None))
-
-        ctx = HookContext(messages=msgs, tools=tools or [], iteration=_iteration)
 
         _terminate_batch = False
         for tc in tcs:
@@ -262,41 +228,6 @@ def run_agent(client: ChatClient, messages: list[ChatMessage],
         if hooks.should_stop_after_turn(msgs, ctx):
             _emit("turn_end", {"reason": "should_stop"})
             return _assistant_message("")
-
-        # ── Context compaction trigger (hook-driven) ──────────────────
-        _cur_tokens = estimate_context_tokens(_msgs_to_dicts(msgs))
-        _should_compact = hooks.should_compact_hook(
-            _cur_tokens, len(msgs), _context_window,
-            _last_compaction_msg_count)
-
-        if _should_compact is True and not _in_compaction_mode:
-            # Ask hook for compaction instruction + response_format
-            from pathlib import Path as _Path
-            _memory_dir = str(_Path(os.getcwd()) / "memory")
-            ci = hooks.build_compaction_instruction(_memory_dir, msgs)
-
-            if ci is not None and ci.response_format is not None:
-                _compaction_response_format = ci.response_format
-            elif ci is not None:  # hook gave instruction but no custom RF
-                _compaction_response_format = _default_compact_response_format()
-            else:
-                # Fallback: default response format
-                _compaction_response_format = _default_compact_response_format()
-
-            logger.info(f"[compaction] triggered (tokens={_cur_tokens:,}, msgs={len(msgs)})")
-            _in_compaction_mode = True
-
-            # Inject instruction message
-            if ci is not None:
-                msgs.append(ChatMessage(role="user", content=ci.instruction))
-            else:
-                # Fallback: default instruction (same as before)
-                from sdk.hooks.default_compaction import _DEFAULT_COMPACT_INSTRUCTION
-                msgs.append(ChatMessage(
-                    role="user",
-                    content=_DEFAULT_COMPACT_INSTRUCTION.format(memory_dir=_memory_dir),
-                ))
-        # else: already in compaction mode, loop continues with merged schema
 
     logger.warning(f"[agent] exiting with error after {_iteration} iterations: no valid response from LLM")
     return _assistant_message("", stop_reason="error", error_message="no response")
