@@ -291,7 +291,7 @@ def run_agent(client: ChatClient, messages: list[ChatMessage],
                 msgs.append(ChatMessage(role="user", content=ci.instruction))
             else:
                 # Fallback: default instruction (same as before)
-                from sdk.agent_hooks import _DEFAULT_COMPACT_INSTRUCTION
+                from sdk.hooks.default_compaction import _DEFAULT_COMPACT_INSTRUCTION
                 msgs.append(ChatMessage(
                     role="user",
                     content=_DEFAULT_COMPACT_INSTRUCTION.format(memory_dir=_memory_dir),
