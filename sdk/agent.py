@@ -12,7 +12,9 @@ from typing import Callable, Dict, List, Optional
 
 from sdk.agent_hooks import (
     AgentHooks,
+    CompactionApplyResult,
     CompositeHooks,
+    DefaultCompactionHook,
     DuplicateOutputPruner,
     HookContext,
     RepetitiveCallGuard,
@@ -23,54 +25,18 @@ from sdk.compaction import (
     CompactionSettings,
     clamp_max_tokens,
     estimate_context_tokens,
-    should_compact,
 )
 from sdk.llm import _prune_tool_output, _strip_think
 from sdk.schemas import (
     ChatMessage,
     ChatCompletionResponse,
-    JsonSchema,
-    ResponseFormat,
 )
 from sdk.tools import ALL_TOOLS
 
 logger = logging.getLogger(__name__)
 
-# ── Compaction mode instruction ─────────────────────────────────────
-
-_COMPACT_INSTRUCTION = """\
-[CONTEXT WINDOW ALERT] Your context is approaching the limit.
-
-Please organize your working memory:
-1. Read your current memory files under `{memory_dir}/` (INDEX.md, identity.md, goals/, issues/, journal/)
-2. Update them with what you've learned and accomplished so far
-3. When done, return a concise summary of the session's progress
-
-After this, your conversation history will be replaced with just your summary."""
-
-
-def _compact_response_format() -> ResponseFormat:
-    """Build the ``{summary: string}`` schema used during compaction mode."""
-    return ResponseFormat(
-        type="json_schema",
-        json_schema=JsonSchema(
-            name="compaction_result",
-            strict=True,
-            schema={
-                "type": "object",
-                "properties": {
-                    "summary": {
-                        "type": "string",
-                        "description": (
-                            "Concise summary of session progress, decisions made, and next steps."
-                        ),
-                    },
-                },
-                "required": ["summary"],
-                "additionalProperties": False,
-            },
-        ),
-    )
+# Re-export for convenience (lives in agent_hooks.py)
+from sdk.agent_hooks import _default_compact_response_format  # noqa: F401
 
 
 class ChatClient:
@@ -112,13 +78,14 @@ def _msgs_to_dicts(msgs: list[ChatMessage]) -> list[dict]:
 _DEFAULT_CONTEXT_WINDOW = 128_000
 
 
-def _build_default_hooks(on_step, terminal_tools):
+def _build_default_hooks(on_step, terminal_tools, compaction_settings):
     """Build the default hook chain that reproduces legacy behaviour."""
     parts = [RepetitiveCallGuard(), DuplicateOutputPruner()]
     if terminal_tools:
         parts.append(TerminalToolHook(terminal_tools))
     if on_step:
         parts.append(StepLogger(on_step))
+    parts.append(DefaultCompactionHook(compaction_settings or CompactionSettings()))
     return CompositeHooks(*parts)
 
 
@@ -149,16 +116,18 @@ def run_agent(client: ChatClient, messages: list[ChatMessage],
     """
     tools = tools or ALL_TOOLS
     _response_format = response_format
-    _compaction = compaction_settings or CompactionSettings()
     _context_window = context_window
     msgs = list(messages)
     _initial_len = len(msgs)
 
     # Build default hooks for backward compatibility when caller passes None
     if hooks is None:
-        hooks = _build_default_hooks(on_step, terminal_tools)
+        hooks = _build_default_hooks(on_step, terminal_tools,
+                                     compaction_settings or CompactionSettings())
 
+    # ── Compaction state (managed by loop, hooks supply behaviour) ────
     _in_compaction_mode = False
+    _compaction_response_format: Optional[Dict] = None
     _last_compaction_msg_count = 0
 
     def _emit(event_type: str, data: Dict):
@@ -174,7 +143,7 @@ def run_agent(client: ChatClient, messages: list[ChatMessage],
 
         # Use compaction response_format when in compaction mode
         _active_rf = (
-            _compact_response_format() if _in_compaction_mode else _response_format
+            _compaction_response_format if _in_compaction_mode else _response_format
         )
 
         _emit("turn_start", {"iteration": _iteration})
@@ -198,30 +167,35 @@ def run_agent(client: ChatClient, messages: list[ChatMessage],
         if not tcs:
             content = _strip_think(message.content or "")
 
-            # Compaction mode exit via result
+            # Compaction mode: hook parses summary and replaces history
             if _in_compaction_mode:
-                try:
-                    _parsed = json.loads(content)
-                    _summary = _parsed.get("summary", content)
-                except (json.JSONDecodeError, TypeError):
+                apply_result = hooks.apply_compaction_summary(content, messages)
+                if apply_result is None:
+                    # Fallback: built-in parse (same as before for safety)
                     _summary = content
-
-                if not _summary or len(_summary.strip()) < 20:
-                    msgs.append(ChatMessage(
-                        role="user",
-                        content="Your summary is too short. Please provide a meaningful "
-                                "summary of the session's progress and call result again."))
-                    continue
+                    try:
+                        _parsed = json.loads(content)
+                        _summary = _parsed.get("summary", content)
+                    except (json.JSONDecodeError, TypeError):
+                        pass
+                    if not _summary or len(_summary.strip()) < 20:
+                        msgs.append(ChatMessage(
+                            role="user",
+                            content="Your summary is too short. Please provide a meaningful "
+                                    "summary of the session's progress and call result again."))
+                        continue
+                    apply_result = CompactionApplyResult(
+                        messages=msgs[:_initial_len] + [ChatMessage(
+                            role="user",
+                            content=f"[COMPACTED HISTORY]\n{_summary}\n\n"
+                                    f"Continue working from where you left off.")])
 
                 _in_compaction_mode = False
-                summary_msg = ChatMessage(role="user", content=(
-                    f"[COMPACTED HISTORY]\n{_summary}\n\n"
-                    f"Continue working from where you left off."
-                ))
-                msgs = msgs[:_initial_len] + [summary_msg]
+                _compaction_response_format = None
+                msgs = apply_result.messages
                 _last_compaction_msg_count = len(msgs)
                 logger.info(
-                    f"[compaction] done, summary={len(_summary)} chars, msgs now={len(msgs)}"
+                    f"[compaction] done, msgs now={len(msgs)}"
                 )
                 continue
 
@@ -289,35 +263,40 @@ def run_agent(client: ChatClient, messages: list[ChatMessage],
             _emit("turn_end", {"reason": "should_stop"})
             return _assistant_message("")
 
-        # ── Context compaction trigger ─────────────────────────────────
+        # ── Context compaction trigger (hook-driven) ──────────────────
         _cur_tokens = estimate_context_tokens(_msgs_to_dicts(msgs))
-        if should_compact(_cur_tokens, len(msgs),
-                          _context_window, _compaction,
-                          last_compaction_msg_count=_last_compaction_msg_count):
-            # Determine trigger reason for logging
-            _remaining = _context_window - _compaction.reserve_tokens
-            _token_triggered = _cur_tokens > (_context_window - _compaction.reserve_tokens)
-            _msg_triggered = len(msgs) > _compaction.compact_at
-            if _token_triggered and _msg_triggered:
-                _reason = (f"tokens={_cur_tokens:,}/{_remaining:,} AND "
-                           f"msgs={len(msgs)}/{_compaction.compact_at}")
-            elif _token_triggered:
-                _reason = f"tokens={_cur_tokens:,}/{_remaining:,}"
+        _should_compact = hooks.should_compact_hook(
+            _cur_tokens, len(msgs), _context_window,
+            _last_compaction_msg_count)
+
+        if _should_compact is True and not _in_compaction_mode:
+            # Ask hook for compaction instruction + response_format
+            from pathlib import Path as _Path
+            _memory_dir = str(_Path(os.getcwd()) / "memory")
+            ci = hooks.build_compaction_instruction(_memory_dir, msgs)
+
+            if ci is not None and ci.response_format is not None:
+                _compaction_response_format = ci.response_format
+            elif ci is not None:  # hook gave instruction but no custom RF
+                _compaction_response_format = _default_compact_response_format()
             else:
-                _reason = f"msgs={len(msgs)}/{_compaction.compact_at}"
+                # Fallback: default response format
+                _compaction_response_format = _default_compact_response_format()
 
-            if not _in_compaction_mode:
-                logger.info(f"[compaction] triggered ({_reason}), entering compaction mode")
-                _in_compaction_mode = True
+            logger.info(f"[compaction] triggered (tokens={_cur_tokens:,}, msgs={len(msgs)})")
+            _in_compaction_mode = True
 
-                # Determine memory dir from cwd (runtime root)
-                _memory_dir = str(Path(os.getcwd()) / "memory")
-
+            # Inject instruction message
+            if ci is not None:
+                msgs.append(ChatMessage(role="user", content=ci.instruction))
+            else:
+                # Fallback: default instruction (same as before)
+                from sdk.agent_hooks import _DEFAULT_COMPACT_INSTRUCTION
                 msgs.append(ChatMessage(
                     role="user",
-                    content=_COMPACT_INSTRUCTION.format(memory_dir=_memory_dir),
+                    content=_DEFAULT_COMPACT_INSTRUCTION.format(memory_dir=_memory_dir),
                 ))
-            # else: already in compaction mode, loop continues with merged schema
+        # else: already in compaction mode, loop continues with merged schema
 
     logger.warning(f"[agent] exiting with error after {_iteration} iterations: no valid response from LLM")
     return _assistant_message("", stop_reason="error", error_message="no response")

@@ -1,1 +1,1 @@
-"""SDK — business-independent utilities (LLM client, agent loop, tools, git)."""
+"""SDK — business-independent utilities (LLM client, agent loop, hooks, tools, git)."""

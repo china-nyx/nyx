@@ -16,7 +16,7 @@ from collections import deque
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Optional, Protocol, runtime_checkable
 
-from sdk.schemas import ChatMessage
+from sdk.schemas import ChatMessage, JsonSchema, ResponseFormat
 
 logger = logging.getLogger(__name__)
 
@@ -51,19 +51,57 @@ class HookContext:
     iteration: int                      # current loop iteration
 
 
+# ── Compaction hook types ────────────────────────────────────────────
+
+@dataclass(frozen=True)
+class CompactionInstruction:
+    """Return from build_compaction_instruction to customise compaction mode.
+
+    The loop uses *instruction* as the user message injected into history,
+    and *response_format* as the JSON schema passed to the LLM.
+    Return ``None`` to keep the built-in defaults.
+    """
+    instruction: str
+    response_format: Optional[Dict] = None
+
+
+@dataclass(frozen=True)
+class CompactionApplyResult:
+    """Return from apply_compaction_summary to replace history after compaction.
+
+    *messages* is the new message list (typically ``initial_msgs + [summary_msg]``).
+    Return ``None`` to keep the built-in behaviour.
+    """
+    messages: List[ChatMessage]
+
+
 # ── Hook Protocol (all methods optional — missing = no-op) ────────────
 
 @runtime_checkable
 class AgentHooks(Protocol):
     """Optional hooks for the agent loop. Implement any subset."""
 
+    # ── Tool call hooks ──────────────────────────────────────────────
     def before_tool_call(self, name: str, args: Dict[str, Any],
                          ctx: HookContext) -> Optional[BeforeToolCallResult]: ...
     def after_tool_call(self, name: str, args: Dict[str, Any],
                         result: str, is_error: bool,
                         ctx: HookContext) -> Optional[AfterToolCallResult]: ...
+
+    # ── Turn-level hooks ─────────────────────────────────────────────
     def should_stop_after_turn(self, messages: List[ChatMessage],
                                ctx: HookContext) -> bool: ...
+
+    # ── Compaction hooks ─────────────────────────────────────────────
+    def should_compact_hook(self, context_tokens: int, msg_count: int,
+                            context_window: int,
+                            last_compaction_msg_count: int) -> Optional[bool]: ...
+    def build_compaction_instruction(self, memory_dir: str,
+                                     messages: List[ChatMessage]) -> Optional[CompactionInstruction]: ...
+    def apply_compaction_summary(self, raw_content: str,
+                                 initial_messages: List[ChatMessage]) -> Optional[CompactionApplyResult]: ...
+
+    # ── Observer (read-only) ─────────────────────────────────────────
     def on_event(self, event_type: str, data: Dict[str, Any]): ...
 
 
@@ -108,6 +146,40 @@ class CompositeHooks:
             if getattr(h, 'should_stop_after_turn', lambda *a: False)(messages, ctx):
                 return True
         return False
+
+    # ── Compaction hooks ─────────────────────────────────────────────
+
+    def should_compact_hook(self, context_tokens: int, msg_count: int,
+                            context_window: int,
+                            last_compaction_msg_count: int) -> Optional[bool]:
+        """First hook returning a non-None value wins."""
+        for h in self._hooks:
+            r = getattr(h, 'should_compact_hook', lambda *a: None)(
+                context_tokens, msg_count, context_window,
+                last_compaction_msg_count)
+            if r is not None:
+                return r
+        return None
+
+    def build_compaction_instruction(self, memory_dir: str,
+                                     messages: List[ChatMessage]) -> Optional[CompactionInstruction]:
+        """First hook returning a non-None value wins."""
+        for h in self._hooks:
+            r = getattr(h, 'build_compaction_instruction', lambda *a: None)(
+                memory_dir, messages)
+            if r is not None:
+                return r
+        return None
+
+    def apply_compaction_summary(self, raw_content: str,
+                                 initial_messages: List[ChatMessage]) -> Optional[CompactionApplyResult]:
+        """First hook returning a non-None value wins."""
+        for h in self._hooks:
+            r = getattr(h, 'apply_compaction_summary', lambda *a: None)(
+                raw_content, initial_messages)
+            if r is not None:
+                return r
+        return None
 
     def on_event(self, event_type: str, data: Dict[str, Any]) -> None:
         for h in self._hooks:
@@ -200,6 +272,97 @@ class StepLogger:
                         ctx: HookContext) -> Optional[AfterToolCallResult]:
         self._on_step(name, args, result, is_error)
         return None
+
+
+# ── Default compaction instruction ───────────────────────────────────
+
+_DEFAULT_COMPACT_INSTRUCTION = """\
+[CONTEXT WINDOW ALERT] Your context is approaching the limit.
+
+Please organize your working memory:
+1. Read your current memory files under `{memory_dir}/` (INDEX.md, identity.md, goals/, issues/, journal/)
+2. Update them with what you've learned and accomplished so far
+3. When done, return a concise summary of the session's progress
+
+After this, your conversation history will be replaced with just your summary."""
+
+
+def _default_compact_response_format() -> ResponseFormat:
+    """Build the ``{summary: string}`` schema used during compaction mode."""
+    return ResponseFormat(
+        type="json_schema",
+        json_schema=JsonSchema(
+            name="compaction_result",
+            strict=True,
+            schema={
+                "type": "object",
+                "properties": {
+                    "summary": {
+                        "type": "string",
+                        "description": (
+                            "Concise summary of session progress, decisions made, and next steps."
+                        ),
+                    },
+                },
+                "required": ["summary"],
+                "additionalProperties": False,
+            },
+        ),
+    )
+
+
+# ── Default Compaction Hook (reproduces legacy NYX behaviour) ─────────
+
+class DefaultCompactionHook:
+    """Default compaction hook — reproduces current NYX compaction behaviour.
+
+    Implements all three compaction hooks:
+    - should_compact_hook: uses sdk.compaction.should_compact()
+    - build_compaction_instruction: returns _DEFAULT_COMPACT_INSTRUCTION + schema
+    - apply_compaction_summary: parses JSON {summary} and replaces history
+    """
+
+    def __init__(self, settings: Any = None):  # CompactionSettings
+        from sdk.compaction import CompactionSettings as CS, should_compact as _sc
+        self._settings = settings or CS()
+        self._should_compact_fn = _sc
+        self._last_compaction_msg_count = 0
+
+    def should_compact_hook(self, context_tokens: int, msg_count: int,
+                            context_window: int,
+                            last_compaction_msg_count: int) -> Optional[bool]:
+        return self._should_compact_fn(
+            context_tokens, msg_count, context_window, self._settings,
+            last_compaction_msg_count=last_compaction_msg_count)
+
+    def build_compaction_instruction(self, memory_dir: str,
+                                     messages: List[ChatMessage]) -> CompactionInstruction:
+        return CompactionInstruction(
+            instruction=_DEFAULT_COMPACT_INSTRUCTION.format(memory_dir=memory_dir),
+            response_format=_default_compact_response_format().model_dump(exclude_none=True),
+        )
+
+    def apply_compaction_summary(self, raw_content: str,
+                                 initial_messages: List[ChatMessage]) -> Optional[CompactionApplyResult]:
+        # Parse JSON {summary} or use raw content
+        _summary = raw_content
+        try:
+            _parsed = json.loads(raw_content)
+            _summary = _parsed.get("summary", raw_content)
+        except (json.JSONDecodeError, TypeError):
+            pass
+
+        if not _summary or len(_summary.strip()) < 20:
+            # Signal that summary is too short — loop will re-prompt
+            return None
+
+        summary_msg = ChatMessage(role="user", content=(
+            f"[COMPACTED HISTORY]\n{_summary}\n\n"
+            f"Continue working from where you left off."
+        ))
+        self._last_compaction_msg_count = len(initial_messages) + 1
+        return CompactionApplyResult(
+            messages=list(initial_messages) + [summary_msg])
 
 
 # ── Helpers ───────────────────────────────────────────────────────────
