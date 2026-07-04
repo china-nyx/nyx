@@ -77,8 +77,13 @@ class Config(BaseModel):
         return self.home / "sandbox"
 
     @property
+    def memory_dir(self) -> Path:
+        return self.home / "memory"
+
+    @property
     def runtime_dirs(self) -> list:
-        return [self.log_dir, self.inbox_dir, self.task_dir, self.skills_dir, self.sandbox_dir]
+        return [self.log_dir, self.inbox_dir, self.task_dir, self.skills_dir,
+                self.sandbox_dir, self.memory_dir]
 
     @classmethod
     def from_settings(cls, *, repo: Path, home: Path):
@@ -122,8 +127,6 @@ class Config(BaseModel):
             "compaction_settings": CompactionSettings(
                 enabled=bool(raw.get("enabled", True)),
                 reserve_tokens=int(raw.get("reserve_tokens", 16384)),
-                keep_recent_tokens=int(raw.get("keep_recent_tokens", 20000)),
-                summarize_max_tokens=int(raw.get("summarize_max_tokens", 1024)),
             )
         }
 

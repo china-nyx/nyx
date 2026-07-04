@@ -1,21 +1,19 @@
-"""Phase 1 verification — compaction serialization and prompt building.
+"""Compaction module verification — token estimation, trigger logic.
 
 Run: python3 tests/test_compaction.py
 Does NOT require an LLM server."""
 
-import json
 import sys
 from pathlib import Path
 
-# Add repo root to path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from sdk.compaction import (
-    serialize_conversation as _serialize_conversation,
-    COMPACT_SYSTEM as _COMPACT_SYSTEM,
-    COMPACT_PROMPT as _COMPACT_PROMPT,
-    COMPACT_UPDATE_PROMPT as _COMPACT_UPDATE_PROMPT,
-    _TOOL_RESULT_MAX_CHARS,
+    CompactionSettings,
+    estimate_tokens,
+    estimate_context_tokens,
+    clamp_max_tokens,
+    should_compact,
 )
 
 
@@ -28,157 +26,108 @@ def _fail(name, msg):
     sys.exit(1)
 
 
-def test_serialize_basic():
-    """Basic message serialization."""
+def test_estimate_tokens():
+    assert estimate_tokens("") == 0
+    _ok("empty string → 0")
+
+    assert estimate_tokens("hello") >= 1
+    _ok("short text ≥ 1")
+
+    # chars/4 heuristic
+    assert estimate_tokens("a" * 8) == 2
+    _ok("chars/4 heuristic")
+
+
+def test_estimate_context_tokens():
     msgs = [
-        {"role": "assistant", "content": "Let me check the file.", "tool_calls": [
-            {"id": "tc1", "function": {"name": "read", "arguments": json.dumps({"path": "app/foo.py"})}}
-        ]},
-        {"role": "tool", "tool_call_id": "tc1", "content": "def hello(): pass"},
+        {"role": "user", "content": "hi"},
+        {"role": "assistant", "content": "hello there"},
     ]
-    text = _serialize_conversation(msgs)
+    total = estimate_context_tokens(msgs)
+    assert total > 0
+    _ok("basic messages")
 
-    assert "[Assistant]: Let me check the file." in text, f"Missing assistant text: {text!r}"
-    _ok("assistant text serialized")
-
-    assert 'read(' in text, f"Missing tool call: {text!r}"
-    _ok("tool call serialized")
-
-    assert "[Tool result]: def hello(): pass" in text, f"Missing tool result: {text!r}"
-    _ok("tool result serialized")
-
-
-def test_serialize_no_tool_calls():
-    """Assistant message with only text (no tool calls)."""
-    msgs = [
-        {"role": "assistant", "content": "Task complete.", "tool_calls": []},
-    ]
-    text = _serialize_conversation(msgs)
-
-    assert "[Assistant]: Task complete." in text
-    assert "tool call" not in text.lower()
-    _ok("text-only assistant message")
-
-
-def test_serialize_user_message():
-    """User message serialization."""
-    msgs = [
-        {"role": "user", "content": "Fix the bug in foo.py"},
-    ]
-    text = _serialize_conversation(msgs)
-
-    assert "[User]: Fix the bug in foo.py" in text
-    _ok("user message serialized")
-
-
-def test_serialize_truncation():
-    """Tool result truncation at _TOOL_RESULT_MAX_CHARS."""
-    long_content = "x" * (_TOOL_RESULT_MAX_CHARS + 500)
-    msgs = [
-        {"role": "tool", "tool_call_id": "tc1", "content": long_content},
-    ]
-    text = _serialize_conversation(msgs)
-
-    assert "truncated" in text, f"Expected truncation marker in: {text[-200:]!r}"
-    # The serialized content should be capped
-    result_part = text.split("[Tool result]: ", 1)[1]
-    assert len(result_part) < _TOOL_RESULT_MAX_CHARS + 100, "Content not truncated"
-    _ok("tool result truncation")
-
-
-def test_serialize_empty_content():
-    """Messages with empty/None content."""
-    msgs = [
-        {"role": "assistant", "content": "", "tool_calls": []},
-        {"role": "tool", "tool_call_id": "tc1", "content": ""},
-        {"role": "user", "content": None},
-    ]
-    text = _serialize_conversation(msgs)
-
-    # Should not crash and should produce something (even if empty parts)
-    assert isinstance(text, str)
-    _ok("empty content handling")
-
-
-def test_serialize_multiple_tool_calls():
-    """Multiple tool calls in one assistant message."""
-    msgs = [
+    msgs_with_tools = [
         {"role": "assistant", "content": "", "tool_calls": [
-            {"id": "tc1", "function": {"name": "read", "arguments": json.dumps({"path": "a.py"})}},
-            {"id": "tc2", "function": {"name": "bash", "arguments": json.dumps({"command": "ls"})}},
+            {"function": {"name": "read", "arguments": '{"path": "foo.py"}'}}
         ]},
-        {"role": "tool", "tool_call_id": "tc1", "content": "file a"},
-        {"role": "tool", "tool_call_id": "tc2", "content": "a.py b.py"},
     ]
-    text = _serialize_conversation(msgs)
-
-    assert text.count("[Assistant tool call]:") == 2, f"Expected 2 tool calls, got: {text!r}"
-    assert "read(" in text
-    assert "bash(" in text
-    _ok("multiple tool calls")
+    total2 = estimate_context_tokens(msgs_with_tools)
+    assert total2 > 0
+    _ok("messages with tool_calls")
 
 
-def test_compact_prompts_exist():
-    """Verify compaction prompts are defined and non-empty."""
-    assert _COMPACT_SYSTEM.strip(), "_COMPACT_SYSTEM is empty"
-    _ok("_COMPACT_SYSTEM defined")
+def test_clamp_max_tokens():
+    # Plenty of headroom
+    assert clamp_max_tokens(4096, 10_000, 128_000) == 4096
+    _ok("plenty of headroom")
 
-    assert "## Goal" in _COMPACT_PROMPT, "Missing ## Goal in prompt"
-    assert "## Progress" in _COMPACT_PROMPT
-    assert "### Done" in _COMPACT_PROMPT
-    assert "### In Progress" in _COMPACT_PROMPT
-    assert "## Key Decisions" in _COMPACT_PROMPT
-    assert "## Next Steps" in _COMPACT_PROMPT
-    assert "## Critical Context" in _COMPACT_PROMPT
-    _ok("_COMPACT_PROMPT has all required sections")
+    # Tight headroom — should clamp down
+    clamped = clamp_max_tokens(4096, 120_000, 128_000)
+    assert clamped <= 4096
+    assert clamped >= 256
+    _ok("tight headroom clamped")
 
-    assert "previous-summary" in _COMPACT_UPDATE_PROMPT, "Missing previous-summary in update prompt"
-    assert "PRESERVE" in _COMPACT_UPDATE_PROMPT
-    _ok("_COMPACT_UPDATE_PROMPT references previous summary")
+    # Almost full — minimum 256
+    assert clamp_max_tokens(4096, 127_000, 128_000) == 256
+    _ok("near-full returns min 256")
 
 
-def test_update_prompt_formatting():
-    """Verify UPDATE prompt formats previous_summary correctly."""
-    prev = "## Goal\nTest goal\n\n## Progress\n### Done\n- [x] done"
-    formatted = _COMPACT_UPDATE_PROMPT.format(previous_summary=prev)
-
-    assert "<previous-summary>" in formatted
-    assert "</previous-summary>" in formatted
-    assert "Test goal" in formatted
-    _ok("UPDATE prompt formats previous summary")
+def test_should_compact_disabled():
+    settings = CompactionSettings(enabled=False)
+    assert not should_compact(999_999, 999, 128_000, settings)
+    _ok("disabled → never triggers")
 
 
-def test_serialize_preserves_order():
-    """Messages should appear in chronological order."""
-    msgs = [
-        {"role": "user", "content": "first"},
-        {"role": "assistant", "content": "second", "tool_calls": []},
-        {"role": "tool", "tool_call_id": "tc1", "content": "third"},
-        {"role": "assistant", "content": "fourth", "tool_calls": []},
-    ]
-    text = _serialize_conversation(msgs)
+def test_should_compact_token_triggered():
+    settings = CompactionSettings(reserve_tokens=16384)
+    # tokens > window - reserve
+    assert should_compact(120_000, 5, 128_000, settings)
+    _ok("token threshold triggers")
 
-    pos_first = text.index("[User]: first")
-    pos_second = text.index("[Assistant]: second")
-    pos_third = text.index("[Tool result]: third")
-    pos_fourth = text.index("[Assistant]: fourth")
+    assert not should_compact(100_000, 5, 128_000, settings)
+    _ok("below token threshold does not trigger")
 
-    assert pos_first < pos_second < pos_third < pos_fourth, "Messages not in order"
-    _ok("message order preserved")
+
+def test_should_compact_msg_triggered():
+    settings = CompactionSettings(compact_at=10)
+    assert should_compact(1_000, 11, 128_000, settings)
+    _ok("msg count triggers")
+
+    assert not should_compact(1_000, 5, 128_000, settings)
+    _ok("below msg threshold does not trigger")
+
+
+def test_should_compact_cooldown():
+    settings = CompactionSettings(compact_at=10, cooldown_messages=10)
+    # Last compaction at msg 50, now at 58 — only 8 new msgs < 10 cooldown
+    assert not should_compact(1_000, 58, 128_000, settings, last_compaction_msg_count=50)
+    _ok("cooldown prevents re-trigger")
+
+    # Last compaction at msg 40, now at 58 — 18 new msgs >= 10 cooldown
+    assert should_compact(1_000, 58, 128_000, settings, last_compaction_msg_count=40)
+    _ok("cooldown expired → triggers")
+
+
+def test_should_compact_token_no_cooldown():
+    """Token-based trigger bypasses cooldown."""
+    settings = CompactionSettings(reserve_tokens=16384, compact_at=10, cooldown_messages=10)
+    # Token threshold hit — should trigger regardless of cooldown
+    assert should_compact(120_000, 58, 128_000, settings, last_compaction_msg_count=50)
+    _ok("token trigger bypasses cooldown")
 
 
 def main():
-    print("Phase 1 verification: compaction serialization + prompts\n")
+    print("Compaction verification\n")
 
-    test_serialize_basic()
-    test_serialize_no_tool_calls()
-    test_serialize_user_message()
-    test_serialize_truncation()
-    test_serialize_empty_content()
-    test_serialize_multiple_tool_calls()
-    test_compact_prompts_exist()
-    test_update_prompt_formatting()
-    test_serialize_preserves_order()
+    test_estimate_tokens()
+    test_estimate_context_tokens()
+    test_clamp_max_tokens()
+    test_should_compact_disabled()
+    test_should_compact_token_triggered()
+    test_should_compact_msg_triggered()
+    test_should_compact_cooldown()
+    test_should_compact_token_no_cooldown()
 
     print("\nAll tests passed.")
 

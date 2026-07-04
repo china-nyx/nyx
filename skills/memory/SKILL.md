@@ -1,16 +1,16 @@
 ---
 name: memory
-description: Manage NYX's persistent memory files in sandbox/memory/. Use when you need to read, update, or maintain identity, goals, issues, journal, and INDEX.md. Memory is organized into subdirectories with an INDEX.md entry point.
+description: Manage NYX's persistent memory files in memory/. Use when you need to read, update, or maintain identity, goals, issues, journal, and INDEX.md. Memory is organized into subdirectories with an INDEX.md entry point.
 ---
 
 # Memory Skill
 
-This skill guides NYX through maintaining its persistent memory files in `sandbox/memory/`.
+This skill guides NYX through maintaining its persistent memory files in `memory/`.
 
 ## Directory Structure
 
 ```
-sandbox/memory/
+memory/
 ├── INDEX.md                ← Entry point — lists all files, purpose, size, reading priority
 ├── identity.md             ← Who NYX is, capabilities, limitations (must-read)
 ├── goals/                  ← Goal tracking
@@ -29,7 +29,7 @@ sandbox/memory/
 
 ## Before You Start
 
-1. **Read `sandbox/memory/INDEX.md`** — it lists all memory files with purpose, size, and reading priority
+1. **Read `memory/INDEX.md`** — it lists all memory files with purpose, size, and reading priority
 2. Follow the reading priority: must-read first, then read-when-relevant
 
 ## Memory Files
@@ -47,7 +47,7 @@ sandbox/memory/
 ### Step 1: Read INDEX.md
 
 ```bash
-cat sandbox/memory/INDEX.md
+cat memory/INDEX.md
 ```
 
 This tells you which files exist, their size, and reading priority.
@@ -55,14 +55,14 @@ This tells you which files exist, their size, and reading priority.
 ### Step 2: Read Must-Read Files
 
 Always read these first:
-- `sandbox/memory/identity.md` — confirm self-identity is consistent
-- `sandbox/memory/goals/active.md` — check goal progress, decide next actions
+- `memory/identity.md` — confirm self-identity is consistent
+- `memory/goals/active.md` — check goal progress, decide next actions
 
 ### Step 3: Read Relevant Files
 
 Read these when the situation calls for it:
-- `sandbox/memory/issues/open.md` — when encountering anomalies or assessing known limitations
-- `sandbox/memory/journal/current.md` — review recent entries to avoid duplicating work (large file, read latest entries only)
+- `memory/issues/open.md` — when encountering anomalies or assessing known limitations
+- `memory/journal/current.md` — review recent entries to avoid duplicating work (large file, read latest entries only)
 
 ### Step 4: Update Memory
 
@@ -88,19 +88,19 @@ If memory still uses the old flat structure, migrate on next update:
 
 ```bash
 # Migrate goals
-mv sandbox/memory/goals.md sandbox/memory/goals/active.md 2>/dev/null
-touch sandbox/memory/goals/archive.md
+mv memory/goals.md memory/goals/active.md 2>/dev/null
+touch memory/goals/archive.md
 
 # Migrate issues
-mv sandbox/memory/issues.md sandbox/memory/issues/open.md 2>/dev/null
-touch sandbox/memory/issues/resolved.md
+mv memory/issues.md memory/issues/open.md 2>/dev/null
+touch memory/issues/resolved.md
 
 # Migrate journal
-mkdir -p sandbox/memory/journal/archive
-mv sandbox/memory/journal.md sandbox/memory/journal/current.md 2>/dev/null
+mkdir -p memory/journal/archive
+mv memory/journal.md memory/journal/current.md 2>/dev/null
 
 # Migrate specs (if any)
-mkdir -p sandbox/memory/specs
+mkdir -p memory/specs
 ```
 
 Update INDEX.md to reflect new paths after migration.

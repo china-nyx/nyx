@@ -17,7 +17,7 @@ Self-reflect is not just a status check — it is NYX's mechanism for **continuo
 
 ## Before You Start
 
-1. **Read `sandbox/memory/INDEX.md` first** — it lists all memory files with purpose, size, and reading priority
+1. **Read `memory/INDEX.md` first** — it lists all memory files with purpose, size, and reading priority
 2. Then read the files it marks as must-read (`identity.md`, `goals/active.md`, etc.)
 3. These files tell you who you are, what you've been thinking about, and what's on your plate.
 
@@ -55,7 +55,7 @@ The source code in the repo directory should be healthy, well-documented, and co
 # Find any lingering TODOs, FIXMEs, HACKs in the source code
 grep -rn "TODO\|FIXME\|HACK\|XXX\|STUB" . --include="*.py" | grep -v ".venv"
 ```
-- Note each finding: is it still relevant? Should it be addressed? Add to `sandbox/memory/issues/open.md` if actionable.
+- Note each finding: is it still relevant? Should it be addressed? Add to `memory/issues/open.md` if actionable.
 
 #### 1b: Check Code Comments and Docstrings
 
@@ -142,7 +142,7 @@ for src_dir in ['app', 'sdk']:
 ```bash
 # Check recent commits for keywords matching open issues
 git log --oneline -20
-# Compare against sandbox/memory/issues/open.md — mark resolved items
+# Compare against memory/issues/open.md — mark resolved items
 ```
 
 ---
@@ -184,7 +184,7 @@ head -20 pyproject.toml
 
 #### 2d: Record Findings
 
-If discrepancies found, record in `sandbox/memory/issues/open.md` under a "Documentation drift" issue. If previously reported drift is resolved, move to `sandbox/memory/issues/resolved.md`.
+If discrepancies found, record in `memory/issues/open.md` under a "Documentation drift" issue. If previously reported drift is resolved, move to `memory/issues/resolved.md`.
 
 ---
 
@@ -239,11 +239,11 @@ The sandbox is NYX's workspace — it should be organized and useful.
 - **Check structure**: Memory should use subdirectories (`goals/`, `issues/`, `journal/`). If still flat files, note migration needed.
   ```bash
   # Check if memory uses new directory structure or old flat files
-  ls sandbox/memory/goals/active.md sandbox/memory/issues/open.md sandbox/memory/journal/current.md 2>/dev/null
+  ls memory/goals/active.md memory/issues/open.md memory/journal/current.md 2>/dev/null
   # Old flat files still present?
-  [ -f sandbox/memory/goals.md ] && echo "MIGRATE: goals.md → goals/active.md"
-  [ -f sandbox/memory/issues.md ] && echo "MIGRATE: issues.md → issues/open.md"
-  [ -f sandbox/memory/journal.md ] && echo "MIGRATE: journal.md → journal/current.md"
+  [ -f memory/goals.md ] && echo "MIGRATE: goals.md → goals/active.md"
+  [ -f memory/issues.md ] && echo "MIGRATE: issues.md → issues/open.md"
+  [ -f memory/journal.md ] && echo "MIGRATE: journal.md → journal/current.md"
   ```
 - **Update INDEX.md** after updating any memory file — keep timestamps and sizes current
 - **Check for drift**: Cross-reference claims in memory against actual source code
@@ -474,13 +474,13 @@ PRIORITY: <N>
 - **60**: Cleanup, organization, non-urgent enhancements
 
 **Rules:**
-- Only create tasks for *actionable* items (informational findings go in `sandbox/memory/journal/current.md`)
+- Only create tasks for *actionable* items (informational findings go in `memory/journal/current.md`)
 - Don't duplicate: if an active task already addresses the issue, skip it
 - Be specific in the description — include file paths, line numbers, concrete steps
-- After creating a task, log it in `sandbox/memory/journal/current.md` ("Created inbox task: 80-fix-doc-drift.md")
+- After creating a task, log it in `memory/journal/current.md` ("Created inbox task: 80-fix-doc-drift.md")
 - If the fix requires changing NYX source code, modify it directly (it will commit and executor will restart)
 
 ## Output Format
 
-When done reflecting, write your findings to `sandbox/memory/journal/current.md` as a new entry. Return a brief summary of what you found and decided.
+When done reflecting, write your findings to `memory/journal/current.md` as a new entry. Return a brief summary of what you found and decided.
 

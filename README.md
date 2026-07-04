@@ -147,8 +147,7 @@ All runtime config is in `config/settings.json`. Env vars override file values:
     "compaction": {
         "enabled": true,
         "reserve_tokens": 16384,
-        "keep_recent_tokens": 20000,
-        "summarize_max_tokens": 1024
+
     }
 }
 ```

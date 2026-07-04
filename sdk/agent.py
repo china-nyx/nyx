@@ -1,28 +1,33 @@
 """Agent loop — tool-calling agent session.
 
 Pure function: receives an LLM client and messages, returns when the model
-produces text (no tool calls) or a terminal tool fires. Context compaction
-is handled inline via sdk.compaction.
+produces text (no tool calls). Context compaction is handled inline:
+when tokens approach the window limit, a ``{summary: string}`` response
+schema is injected so the model organises its memory and returns a
+compact summary that replaces the old conversation history.
 """
 import hashlib
 import json
 import logging
+import os
 import time
 from collections import deque
+from pathlib import Path
 from typing import Callable, Dict, List, Optional, Set
 
 from sdk.compaction import (
     CompactionSettings,
     clamp_max_tokens,
     estimate_context_tokens,
-    extract_file_paths,
-    find_cut_point,
-    format_file_note,
     should_compact,
-    summarize,
 )
 from sdk.llm import _prune_tool_output, _strip_think
-from sdk.schemas import ChatMessage, ChatCompletionResponse
+from sdk.schemas import (
+    ChatMessage,
+    ChatCompletionResponse,
+    JsonSchema,
+    ResponseFormat,
+)
 from sdk.tools import ALL_TOOLS
 
 logger = logging.getLogger(__name__)
@@ -38,6 +43,43 @@ def _make_args_key(tool_name: str, args: dict) -> tuple:
         args = {}
     sorted_args = json.dumps(args, sort_keys=True, default=str)
     return (tool_name, hashlib.md5(sorted_args.encode()).hexdigest())
+
+
+# ── Compaction mode instruction ─────────────────────────────────────
+
+_COMPACT_INSTRUCTION = """\
+[CONTEXT WINDOW ALERT] Your context is approaching the limit.
+
+Please organize your working memory:
+1. Read your current memory files under `{memory_dir}/` (INDEX.md, identity.md, goals/, issues/, journal/)
+2. Update them with what you've learned and accomplished so far
+3. When done, return a concise summary of the session's progress
+
+After this, your conversation history will be replaced with just your summary."""
+
+
+def _compact_response_format() -> ResponseFormat:
+    """Build the ``{summary: string}`` schema used during compaction mode."""
+    return ResponseFormat(
+        type="json_schema",
+        json_schema=JsonSchema(
+            name="compaction_result",
+            strict=True,
+            schema={
+                "type": "object",
+                "properties": {
+                    "summary": {
+                        "type": "string",
+                        "description": (
+                            "Concise summary of session progress, decisions made, and next steps."
+                        ),
+                    },
+                },
+                "required": ["summary"],
+                "additionalProperties": False,
+            },
+        ),
+    )
 
 
 class ChatClient:
@@ -95,8 +137,9 @@ def run_agent(client: ChatClient, messages: list[ChatMessage],
     """Tool-calling agent loop. tool_executor(name, args) -> (result_str, is_error).
 
     Runs until the model returns a text response (no tool calls).  When the message
-    history grows too large for the context window, older tool exchanges are compacted
-    into a summary so work can continue without losing the thread.
+    history grows too large for the context window, compaction mode is entered:
+    a ``{summary: string}`` response schema is passed so the model organises its
+    memory and returns a compact summary that replaces all old messages.
 
     Returns: assistant message dict with "content" key (from API or synthesized).
     """
@@ -110,10 +153,9 @@ def run_agent(client: ChatClient, messages: list[ChatMessage],
 
     # Duplicate detection: track MD5 hashes of tool outputs
     _seen_outputs: Set[str] = set()
-    _dup_count = 0
-    # Compaction: track previous summary for incremental merging + cooldown
-    _previous_summary = ""
-    _last_compaction_msg_count = 0  # msg_count at last compaction (for cooldown)
+    # Compaction: cooldown + mode tracking
+    _last_compaction_msg_count = 0
+    _in_compaction_mode = False
     # Repetitive call guard
     _repeat_history: deque = deque(maxlen=_REPEAT_HISTORY_WINDOW)
     _repeat_consecutive = 0
@@ -128,12 +170,17 @@ def run_agent(client: ChatClient, messages: list[ChatMessage],
 
         logger.debug(f"[agent] iter {_iteration}: msgs={len(msgs)}, est_tokens={_context_tokens}, max_tokens={_clamped_max}")
 
+        # Use compaction response_format when in compaction mode
+        _active_rf = (
+            _compact_response_format() if _in_compaction_mode else _response_format
+        )
+
         resp = client.chat(
             msgs,
             temperature=temperature,
             max_tokens=_clamped_max,
             tools=tools if tools else None,
-            response_format=_response_format,
+            response_format=_active_rf,
         )
 
         if not resp.choices:
@@ -143,6 +190,35 @@ def run_agent(client: ChatClient, messages: list[ChatMessage],
         tcs = message.tool_calls or []
         if not tcs:
             content = _strip_think(message.content or "")
+
+            # ── Compaction mode exit via result ────────────────────
+            if _in_compaction_mode:
+                try:
+                    _parsed = json.loads(content)
+                    _summary = _parsed.get("summary", content)
+                except (json.JSONDecodeError, TypeError):
+                    _summary = content
+
+                if not _summary or len(_summary.strip()) < 20:
+                    msgs.append(ChatMessage(
+                        role="user",
+                        content="Your summary is too short. Please provide a meaningful "
+                                "summary of the session's progress and call result again."))
+                    continue
+
+                _in_compaction_mode = False
+                summary_msg = ChatMessage(role="user", content=(
+                    f"[COMPACTED HISTORY]\n{_summary}\n\n"
+                    f"Continue working from where you left off."
+                ))
+                msgs = msgs[:_initial_len] + [summary_msg]
+                _last_compaction_msg_count = len(msgs)
+                logger.info(
+                    f"[compaction] done, summary={len(_summary)} chars, msgs now={len(msgs)}"
+                )
+                continue
+
+            # Normal session exit
             stop_reason = resp.choices[0].finish_reason
             return {
                 "role": "assistant",
@@ -152,6 +228,7 @@ def run_agent(client: ChatClient, messages: list[ChatMessage],
                           for k in ("input", "output", "cacheRead", "cacheWrite", "totalTokens")},
                 "timestamp": int(time.time() * 1000),
             }
+
         msgs.append(ChatMessage(role=message.role, content=message.content,
                                  tool_calls=[tc.model_dump() for tc in tcs] if tcs else None))
 
@@ -197,8 +274,10 @@ def run_agent(client: ChatClient, messages: list[ChatMessage],
             raw_content = f"ERROR: {res}" if err else str(res)
             out_hash = hashlib.md5(raw_content.encode(errors="replace")).hexdigest()
             if out_hash in _seen_outputs:
-                _dup_count += 1
-                tool_content = f"[DUPLICATE OUTPUT — same as a previous {name} call, skipping content to save tokens]"
+                tool_content = (
+                    f"[DUPLICATE OUTPUT — same as a previous {name} call, "
+                    f"skipping content to save tokens]"
+                )
             else:
                 _seen_outputs.add(out_hash)
                 tool_content = _prune_tool_output(name, raw_content[:10000])
@@ -207,50 +286,35 @@ def run_agent(client: ChatClient, messages: list[ChatMessage],
             if name in terminal and not err:
                 return _assistant_message(str(res)[:300])
 
-        # ── Context compaction ────────────────────────────────────────
+        # ── Context compaction trigger ───────────────────────────────
         _cur_tokens = estimate_context_tokens(_msgs_to_dicts(msgs))
-        _remaining = _context_window - _compaction.reserve_tokens
         if should_compact(_cur_tokens, len(msgs),
                           _context_window, _compaction,
                           last_compaction_msg_count=_last_compaction_msg_count):
             # Determine trigger reason for logging
+            _remaining = _context_window - _compaction.reserve_tokens
             _token_triggered = _cur_tokens > (_context_window - _compaction.reserve_tokens)
             _msg_triggered = len(msgs) > _compaction.compact_at
             if _token_triggered and _msg_triggered:
-                _reason = f"tokens={_cur_tokens:,}/{_remaining:,} AND msgs={len(msgs)}/{_compaction.compact_at}"
+                _reason = (f"tokens={_cur_tokens:,}/{_remaining:,} AND "
+                           f"msgs={len(msgs)}/{_compaction.compact_at}")
             elif _token_triggered:
                 _reason = f"tokens={_cur_tokens:,}/{_remaining:,}"
             else:
                 _reason = f"msgs={len(msgs)}/{_compaction.compact_at}"
 
-            _cut_idx = find_cut_point(_msgs_to_dicts(msgs), _initial_len,
-                                      _compaction.keep_recent_tokens)
-            compactable = msgs[_initial_len:_cut_idx]
-            if compactable:
-                logger.info(f"[compaction] triggered ({_reason}), cutting {len(compactable)} msgs (keep from idx {_cut_idx})")
+            if not _in_compaction_mode:
+                logger.info(f"[compaction] triggered ({_reason}), entering compaction mode")
+                _in_compaction_mode = True
 
-                _system_msg = ""
-                if msgs and msgs[0].role == "system":
-                    _system_msg = msgs[0].content or ""
+                # Determine memory dir from cwd (runtime root)
+                _memory_dir = str(Path(os.getcwd()) / "memory")
 
-                summary_text = summarize(client, _system_msg, _msgs_to_dicts(compactable),
-                                         _compaction,
-                                         previous_summary=_previous_summary)
-                _previous_summary = summary_text
-                logger.info(f"[compaction] summarized {len(compactable)} messages -> {len(summary_text)} chars")
-
-                file_paths = extract_file_paths(_msgs_to_dicts(compactable))
-                file_note = format_file_note(file_paths)
-
-                dup_note = f" ({_dup_count} duplicate output(s) detected and skipped)" if _dup_count else ""
-                summary_msg = ChatMessage(role="user", content=(
-                    f"[COMPACTED HISTORY — {len(compactable)} earlier tool exchanges, kept only the most recent for context{dup_note}]\n"
-                    f"{summary_text}"
-                    f"{file_note}\n\nContinue working on the task from where you left off."
+                msgs.append(ChatMessage(
+                    role="user",
+                    content=_COMPACT_INSTRUCTION.format(memory_dir=_memory_dir),
                 ))
-                msgs = msgs[:_initial_len] + [summary_msg] + msgs[_cut_idx:]
-                # Record post-compaction msg count for cooldown tracking
-                _last_compaction_msg_count = len(msgs)
+            # else: already in compaction mode, loop continues with merged schema
 
     logger.warning(f"[agent] exiting with error after {_iteration} iterations: no valid response from LLM")
     return _assistant_message("", stop_reason="error", error_message="no response")
