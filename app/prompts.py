@@ -29,6 +29,7 @@ Source repo: {repo}
 
 Everything under {cwd} is your runtime workspace (read-write):
   - {sandbox}/ → projects, research, data, and persistent notes
+  - memory/ → persistent knowledge (read INDEX.md for entry point; create/update files as needed)
   - skills/ → runtime skills (override built-in by name)
     Built-in skills are loaded from the source repo at runtime.
     Instance-specific skills go here and shadow built-in ones of the same name.
