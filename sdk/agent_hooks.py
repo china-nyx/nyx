@@ -10,7 +10,7 @@ import logging
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Protocol, runtime_checkable
 
-from sdk.schemas import ChatMessage
+from sdk.schemas import ChatMessage, ResponseFormat
 
 logger = logging.getLogger(__name__)
 
@@ -42,7 +42,7 @@ class TransformContextResult:
     Omitted fields keep their current values.
     """
     messages: Optional[List[ChatMessage]] = None   # replace message history
-    response_format: Optional[Any] = None           # override response_format for this turn
+    response_format: Optional[ResponseFormat] = None  # override response_format for this turn
 
 
 # ── Hook context (snapshot passed to each hook) ───────────────────────
@@ -74,7 +74,7 @@ class AgentHooks(Protocol):
 
     # ── Context transform (before each LLM call) ─────────────────────
     def transform_context(self, messages: List[ChatMessage],
-                          response_format: Optional[Any],
+                          response_format: Optional[ResponseFormat],
                           ctx: HookContext) -> Optional[TransformContextResult]: ...
 
     # ── Text response intercept (before loop exits on text) ──────────
@@ -135,7 +135,7 @@ class CompositeHooks:
     # ── Context transform (chain: each hook sees previous output) ────
 
     def transform_context(self, messages: List[ChatMessage],
-                          response_format: Optional[Any],
+                          response_format: Optional[ResponseFormat],
                           ctx: HookContext) -> Optional[TransformContextResult]:
         cur_msgs = messages
         cur_rf = response_format

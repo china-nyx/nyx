@@ -26,6 +26,7 @@ from sdk.llm import _prune_tool_output, _strip_think
 from sdk.schemas import (
     ChatMessage,
     ChatCompletionResponse,
+    ResponseFormat,
 )
 from sdk.tools import ALL_TOOLS
 
@@ -38,7 +39,7 @@ class ChatClient:
 
     def chat(self, messages: list[ChatMessage], *, temperature: float,
              max_tokens: int, tools: Optional[List[Dict]] = None,
-             response_format: Optional[Dict] = None) -> ChatCompletionResponse:
+             response_format: Optional[ResponseFormat] = None) -> ChatCompletionResponse:
         ...
 
 
@@ -85,7 +86,7 @@ def run_agent(client: ChatClient, messages: list[ChatMessage],
               on_step: Optional[Callable] = None,
               tools: List[Dict] = None,
               terminal_tools: Optional[set] = None,
-              response_format: Optional[Dict] = None,
+              response_format: Optional[ResponseFormat] = None,
               compaction_settings=None,
               context_window: int = _DEFAULT_CONTEXT_WINDOW,
               hooks: AgentHooks = None) -> Dict:

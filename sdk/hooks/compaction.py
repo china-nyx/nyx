@@ -100,7 +100,7 @@ class DefaultCompactionHook:
     # ── transform_context: trigger + inject instruction / keep schema ──
 
     def transform_context(self, messages: List[ChatMessage],
-                          response_format: Optional[Any],
+                          response_format: Optional[ResponseFormat],
                           ctx: HookContext) -> Optional[TransformContextResult]:
         # Save initial messages on first call
         if not self._initial_messages:
@@ -126,7 +126,7 @@ class DefaultCompactionHook:
                 content="Your summary is too short. Please provide a meaningful "
                         "summary of the session's progress and call result again.")
             ]
-            rf = _compact_response_format().model_dump(exclude_none=True)
+            rf = _compact_response_format()
             return TransformContextResult(messages=new_msgs, response_format=rf)
 
         # ── Phase 2: Inject compaction instruction (first time) ────────
@@ -139,11 +139,11 @@ class DefaultCompactionHook:
             memory_dir = self._memory_dir()
             instruction = _DEFAULT_COMPACT_INSTRUCTION.format(memory_dir=memory_dir)
             new_msgs = list(messages) + [ChatMessage(role="user", content=instruction)]
-            rf = _compact_response_format().model_dump(exclude_none=True)
+            rf = _compact_response_format()
             return TransformContextResult(messages=new_msgs, response_format=rf)
 
         # ── Phase 3: Keep compaction schema active for next LLM call ───
-        rf = _compact_response_format().model_dump(exclude_none=True)
+        rf = _compact_response_format()
         return TransformContextResult(response_format=rf)
 
     # ── should_continue_after_text: parse summary and replace history ──

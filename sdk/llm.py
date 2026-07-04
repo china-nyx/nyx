@@ -16,7 +16,6 @@ from sdk.schemas import (
     Usage,
     ResponseFormat,
     JsonSchema,
-    ToolDefinition,
 )
 
 logger = logging.getLogger(__name__)
@@ -70,7 +69,7 @@ def _prune_tool_output(name: str, content: str, max_chars: int = 8000) -> str:
 
 # ── Merged JSON Schema mode ────────────────────────────────────────
 
-def _build_schema(tools: List[ToolDefinition], business_schema: Optional[Dict] = None) -> Dict:
+def _build_schema(tools: List[Dict], business_schema: Optional[Dict] = None) -> Dict:
     """Build a merged JSON Schema encoding both tool calls and business response.
 
     Schema structure:
@@ -86,13 +85,13 @@ def _build_schema(tools: List[ToolDefinition], business_schema: Optional[Dict] =
     # Build tool items from tool definitions
     tool_items = []
     for tool in tools:
-        fn = tool.function
-        params = fn.parameters
+        fn = tool["function"]
+        params = fn["parameters"]
         tool_items.append({
             "type": "object",
             "properties": {
-                "name": {"type": "string", "enum": [fn.name]},
-                "args": params.model_dump() if hasattr(params, 'model_dump') else params,
+                "name": {"type": "string", "enum": [fn["name"]]},
+                "args": params,
             },
             "required": ["name", "args"],
             "additionalProperties": False,
@@ -257,7 +256,7 @@ class LLM:
         raise last_err
 
     def chat(self, messages: list[ChatMessage], *, temperature: float = 0.6,
-             max_tokens: int = 2048, tools: List[ToolDefinition] = None,
+             max_tokens: int = 2048, tools: List[Dict] = None,
              response_format: Optional[ResponseFormat] = None) -> ChatCompletionResponse:
         """Non-streaming chat completion.
 
@@ -269,7 +268,7 @@ class LLM:
         """
         _msgs = []
         for m in messages:
-            d = m.model_dump(exclude_none=True) if hasattr(m, 'model_dump') else dict(m)
+            d = m.model_dump(exclude_none=True)
             # Ensure non-assistant roles always have 'content' (llama-server rejects missing content)
             if d.get("role") != "assistant" and "content" not in d:
                 d["content"] = ""
@@ -301,7 +300,7 @@ class LLM:
         if tools:
             body["tools"] = tools
         if response_format:
-            body["response_format"] = response_format
+            body["response_format"] = response_format.model_dump(exclude_none=True)
         raw = self._post(body)
         resp = ChatCompletionResponse.model_validate(raw)
         usage = (resp.usage.model_dump() if resp.usage else {})
