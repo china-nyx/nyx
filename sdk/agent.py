@@ -1,7 +1,7 @@
 """Agent loop — tool-calling agent session.
 
 Thin orchestrator: calls hooks at key points, delegates compaction logic.
-All behavioural extensions live in ``sdk/agent_hooks.py``.
+All behavioural extensions live in ``sdk/hooks/<name>.py`` (one per file).
 """
 import json
 import logging
@@ -14,13 +14,16 @@ from sdk.agent_hooks import (
     AgentHooks,
     CompactionApplyResult,
     CompositeHooks,
+    HookContext,
+)
+from sdk.hooks import (  # noqa: F401
     DefaultCompactionHook,
     DuplicateOutputPruner,
-    HookContext,
     RepetitiveCallGuard,
     StepLogger,
     TerminalToolHook,
 )
+from sdk.hooks.default_compaction import _default_compact_response_format  # noqa: F401
 from sdk.compaction import (
     CompactionSettings,
     clamp_max_tokens,
@@ -34,9 +37,6 @@ from sdk.schemas import (
 from sdk.tools import ALL_TOOLS
 
 logger = logging.getLogger(__name__)
-
-# Re-export for convenience (lives in agent_hooks.py)
-from sdk.agent_hooks import _default_compact_response_format  # noqa: F401
 
 
 class ChatClient:
