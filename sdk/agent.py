@@ -1,20 +1,24 @@
 """Agent loop — tool-calling agent session.
 
-Pure function: receives an LLM client and messages, returns when the model
-produces text (no tool calls). Context compaction is handled inline:
-when tokens approach the window limit, a ``{summary: string}`` response
-schema is injected so the model organises its memory and returns a
-compact summary that replaces the old conversation history.
+Thin orchestrator: calls hooks at key points, delegates compaction logic.
+All behavioural extensions live in ``sdk/agent_hooks.py``.
 """
-import hashlib
 import json
 import logging
 import os
 import time
-from collections import deque
 from pathlib import Path
-from typing import Callable, Dict, List, Optional, Set
+from typing import Callable, Dict, List, Optional
 
+from sdk.agent_hooks import (
+    AgentHooks,
+    CompositeHooks,
+    DuplicateOutputPruner,
+    HookContext,
+    RepetitiveCallGuard,
+    StepLogger,
+    TerminalToolHook,
+)
 from sdk.compaction import (
     CompactionSettings,
     clamp_max_tokens,
@@ -31,19 +35,6 @@ from sdk.schemas import (
 from sdk.tools import ALL_TOOLS
 
 logger = logging.getLogger(__name__)
-
-# ── Repetitive call guard config ────────────────────────────────────
-_REPEAT_THRESHOLD = 3       # N consecutive identical calls triggers the guard
-_REPEAT_HISTORY_WINDOW = 10 # Track last N calls in the deque
-
-
-def _make_args_key(tool_name: str, args: dict) -> tuple:
-    """Create a hashable key from (tool_name, args) for repetitive-call detection."""
-    if not isinstance(args, dict):
-        args = {}
-    sorted_args = json.dumps(args, sort_keys=True, default=str)
-    return (tool_name, hashlib.md5(sorted_args.encode()).hexdigest())
-
 
 # ── Compaction mode instruction ─────────────────────────────────────
 
@@ -99,11 +90,7 @@ class ChatClient:
 
 def _assistant_message(content: str, *, stop_reason: str = "stop",
                        error_message: str = None) -> Dict:
-    """Create an AssistantMessage dict (compatible with pi-ai shape).
-
-    Fields: role, content, stopReason, usage, timestamp.
-    error_message is set only when stop_reason is 'error'.
-    """
+    """Create an AssistantMessage dict (compatible with pi-ai shape)."""
     msg = {
         "role": "assistant",
         "content": content,
@@ -125,6 +112,16 @@ def _msgs_to_dicts(msgs: list[ChatMessage]) -> list[dict]:
 _DEFAULT_CONTEXT_WINDOW = 128_000
 
 
+def _build_default_hooks(on_step, terminal_tools):
+    """Build the default hook chain that reproduces legacy behaviour."""
+    parts = [RepetitiveCallGuard(), DuplicateOutputPruner()]
+    if terminal_tools:
+        parts.append(TerminalToolHook(terminal_tools))
+    if on_step:
+        parts.append(StepLogger(on_step))
+    return CompositeHooks(*parts)
+
+
 def run_agent(client: ChatClient, messages: list[ChatMessage],
               tool_executor: Callable[[str, Dict], tuple], *,
               temperature: float = 0.5,
@@ -133,34 +130,39 @@ def run_agent(client: ChatClient, messages: list[ChatMessage],
               terminal_tools: Optional[set] = None,
               response_format: Optional[Dict] = None,
               compaction_settings: CompactionSettings = None,
-              context_window: int = _DEFAULT_CONTEXT_WINDOW) -> Dict:
-    """Tool-calling agent loop. tool_executor(name, args) -> (result_str, is_error).
+              context_window: int = _DEFAULT_CONTEXT_WINDOW,
+              hooks: AgentHooks = None) -> Dict:
+    """Tool-calling agent loop with pluggable hooks.
 
     Runs until the model returns a text response (no tool calls).  When the message
     history grows too large for the context window, compaction mode is entered:
     a ``{summary: string}`` response schema is passed so the model organises its
     memory and returns a compact summary that replaces all old messages.
 
-    Returns: assistant message dict with "content" key (from API or synthesized).
+    Args:
+        hooks: Optional AgentHooks to intercept tool calls, modify results, etc.
+               If None, default hooks are built from on_step/terminal_tools
+               (repetitive guard + duplicate pruning + step logging).
+
+    Returns:
+        assistant message dict with "content" key (from API or synthesised).
     """
     tools = tools or ALL_TOOLS
-    terminal = set(terminal_tools or [])
     _response_format = response_format
     _compaction = compaction_settings or CompactionSettings()
     _context_window = context_window
     msgs = list(messages)
     _initial_len = len(msgs)
 
-    # Duplicate detection: track MD5 hashes of tool outputs
-    _seen_outputs: Set[str] = set()
-    # Compaction: cooldown + mode tracking
-    _last_compaction_msg_count = 0
+    # Build default hooks for backward compatibility when caller passes None
+    if hooks is None:
+        hooks = _build_default_hooks(on_step, terminal_tools)
+
     _in_compaction_mode = False
-    # Repetitive call guard
-    _repeat_history: deque = deque(maxlen=_REPEAT_HISTORY_WINDOW)
-    _repeat_consecutive = 0
-    _repeat_last_key = None
-    _repeat_cached: Dict[str, str] = {}
+    _last_compaction_msg_count = 0
+
+    def _emit(event_type: str, data: Dict):
+        hooks.on_event(event_type, data)
 
     _iteration = 0
     while True:
@@ -175,6 +177,8 @@ def run_agent(client: ChatClient, messages: list[ChatMessage],
             _compact_response_format() if _in_compaction_mode else _response_format
         )
 
+        _emit("turn_start", {"iteration": _iteration})
+
         resp = client.chat(
             msgs,
             temperature=temperature,
@@ -184,14 +188,17 @@ def run_agent(client: ChatClient, messages: list[ChatMessage],
         )
 
         if not resp.choices:
-            logger.warning(f"[agent] empty response after {_iteration} iterations, returning error")
+            logger.warning(f"[agent] empty response after {_iteration} iterations")
             break
+
         message = resp.choices[0].message
         tcs = message.tool_calls or []
+
+        # ── No tool calls → exit (or compaction mode) ────────────────
         if not tcs:
             content = _strip_think(message.content or "")
 
-            # ── Compaction mode exit via result ────────────────────
+            # Compaction mode exit via result
             if _in_compaction_mode:
                 try:
                     _parsed = json.loads(content)
@@ -220,6 +227,7 @@ def run_agent(client: ChatClient, messages: list[ChatMessage],
 
             # Normal session exit
             stop_reason = resp.choices[0].finish_reason
+            _emit("turn_end", {"content": content})
             return {
                 "role": "assistant",
                 "content": content,
@@ -229,9 +237,13 @@ def run_agent(client: ChatClient, messages: list[ChatMessage],
                 "timestamp": int(time.time() * 1000),
             }
 
+        # ── Tool calls → execute with hooks ───────────────────────────
         msgs.append(ChatMessage(role=message.role, content=message.content,
                                  tool_calls=[tc.model_dump() for tc in tcs] if tcs else None))
 
+        ctx = HookContext(messages=msgs, tools=tools or [], iteration=_iteration)
+
+        _terminate_batch = False
         for tc in tcs:
             fn = tc.function
             name = fn.name
@@ -240,53 +252,44 @@ def run_agent(client: ChatClient, messages: list[ChatMessage],
             except Exception:
                 args = {}
 
-            # ── Repetitive call guard ────────────────────────────────
-            _args_key = _make_args_key(name, args)
-            if _args_key == _repeat_last_key:
-                _repeat_consecutive += 1
-            else:
-                _repeat_consecutive = 1
-                _repeat_last_key = _args_key
-
-            if _repeat_consecutive >= _REPEAT_THRESHOLD:
-                logger.warning(f"[agent] repetitive call guard: {name} called {_repeat_consecutive}x consecutively")
-                _cached_result = _repeat_cached.get(_args_key, "(no cached result)")
-                _warning = (
-                    f"[REPETITIVE CALL GUARD] You have run this identical command "
-                    f"{_repeat_consecutive} times in a row with the same result. "
-                    f"Do NOT repeat it. Use the result you already have, try a DIFFERENT approach, "
-                    f"or conclude with RESULT/BLOCKED."
-                )
-                res = _cached_result + "\n\n" + _warning
-                err = False
-                if on_step:
-                    on_step(name, args, res, False)
-                msgs.append(ChatMessage(role="tool", tool_call_id=tc.id, content=_warning))
+            # before_tool_call hook (can block execution)
+            blocked = hooks.before_tool_call(name, args, ctx)
+            if blocked and blocked.block:
+                _emit("tool_call_blocked", {"name": name, "reason": blocked.reason})
+                msgs.append(ChatMessage(role="tool", tool_call_id=tc.id, content=blocked.reason))
                 continue
 
+            # Execute tool
             res, err = tool_executor(name, args)
-            if not err:
-                _repeat_cached[_args_key] = str(res)
-            _repeat_history.append(_args_key)
-            if on_step:
-                on_step(name, args, res, err)
 
-            raw_content = f"ERROR: {res}" if err else str(res)
-            out_hash = hashlib.md5(raw_content.encode(errors="replace")).hexdigest()
-            if out_hash in _seen_outputs:
-                tool_content = (
-                    f"[DUPLICATE OUTPUT — same as a previous {name} call, "
-                    f"skipping content to save tokens]"
-                )
-            else:
-                _seen_outputs.add(out_hash)
-                tool_content = _prune_tool_output(name, raw_content[:10000])
+            # after_tool_call hook (can modify result, set terminate)
+            final_content = f"ERROR: {res}" if err else str(res)
+            final_err = err
+            modified = hooks.after_tool_call(name, args, res, err, ctx)
+            if modified:
+                if modified.content is not None:
+                    final_content = modified.content
+                if modified.is_error is not None:
+                    final_err = modified.is_error
+                if modified.terminate:
+                    _terminate_batch = True
+
+            # Prune large outputs for token safety
+            tool_content = _prune_tool_output(name, final_content[:10000])
+
+            _emit("tool_call_end", {"name": name, "args": args, "error": final_err})
 
             msgs.append(ChatMessage(role="tool", tool_call_id=tc.id, content=tool_content))
-            if name in terminal and not err:
-                return _assistant_message(str(res)[:300])
 
-        # ── Context compaction trigger ───────────────────────────────
+            if _terminate_batch:
+                return _assistant_message(final_content[:300])
+
+        # should_stop_after_turn hook
+        if hooks.should_stop_after_turn(msgs, ctx):
+            _emit("turn_end", {"reason": "should_stop"})
+            return _assistant_message("")
+
+        # ── Context compaction trigger ─────────────────────────────────
         _cur_tokens = estimate_context_tokens(_msgs_to_dicts(msgs))
         if should_compact(_cur_tokens, len(msgs),
                           _context_window, _compaction,
