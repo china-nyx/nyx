@@ -34,7 +34,7 @@ class Config(BaseModel):
 
     # ── agent behavior ─────────────────────────────────────────
     req_retry_sec: int = 25           # seconds between retry attempts for same task
-    self_reflect_sec: int = 3600      # seconds between self-reflection cycles
+    self_reflect_sec: int = 86400     # seconds between self-reflection cycles (1 day)
 
     # ── compaction ─────────────────────────────────────────────
     compaction_settings: CompactionSettings = Field(
@@ -116,7 +116,7 @@ class Config(BaseModel):
             keep_sessions=session_.get("keep_sessions", 300),
             log_keep_days=log_.get("keep_days", 7),
             req_retry_sec=int(os.environ.get("NYX_REQ_RETRY_SEC", "25")),
-            self_reflect_sec=int(os.environ.get("NYX_SELF_REFLECT_SEC", "3600")),
+            self_reflect_sec=int(os.environ.get("NYX_SELF_REFLECT_SEC", "86400")),
             **cls._parse_compaction(raw.get("compaction", {})),
         )
 
