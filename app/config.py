@@ -81,17 +81,13 @@ class Config(BaseModel):
         return self.home / "projects"
 
     @property
-    def toolbox_dir(self) -> Path:
-        return self.home / "toolbox"
-
-    @property
     def temp_dir(self) -> Path:
         return self.home / "temp"
 
     @property
     def runtime_dirs(self) -> list:
         return [self.log_dir, self.inbox_dir, self.task_dir, self.skills_dir,
-                self.memory_dir, self.projects_dir, self.toolbox_dir, self.temp_dir]
+                self.memory_dir, self.projects_dir, self.temp_dir]
 
     @classmethod
     def from_settings(cls, *, repo: Path, home: Path):

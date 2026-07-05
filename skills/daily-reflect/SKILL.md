@@ -1,7 +1,7 @@
 ---
 name: daily-reflect
 description: NYX's periodic self-introspection cycle. Audits the entire workspace and drives continuous improvement. Every cycle should leave things in a slightly better state.
-related_skills: project-management, toolbox
+related_skills: project-management
 ---
 
 # Daily Reflection Skill
@@ -52,12 +52,11 @@ Go through each area below. For each: **look at the actual state**, compare it t
 - Is task/index.md getting too large? Prune very old completed entries if needed.
 - Check if any tasks need priority adjustment
 
-### 6. Projects and Toolbox (projects/, toolbox/)
+### 6. Projects (projects/)
 
 - Is projects/INDEX.md accurate with current project list and status?
 - Are there stale temp files, artifacts, or empty directories to clean up?
 - Should any work products be archived or summarized?
-- Check toolbox for stale tools or undocumented entries
 - Verify cron entries point to valid scripts
 
 ### 7. Daily Reflection Itself

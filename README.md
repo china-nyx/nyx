@@ -52,7 +52,6 @@ task/       — per-task persistent state (scheduler managed)
 skills/     — runtime skills (override built-in by name)
 mailbox/    — inbox/ only (requirements ingested to task/, files deleted after ingestion)
 projects/   — long-running projects (each gets its own directory)
-toolbox/    — shared utilities (multi-project tools only)
 temp/       — scratch space (auto-cleaned on restart)
 ```
 
@@ -80,7 +79,7 @@ NYX manages requirements as tasks with an OS-like scheduler:
 
 NYX has two layers of self-improvement:
 
-**Daily reflection** (`skills/daily-reflect/`) — runs automatically every 24 hours. Performs a deep audit of source code, documentation, skills, memory files, tasks, projects, and toolbox. Creates inbox tasks for actionable improvements.
+**Daily reflection** (`skills/daily-reflect/`) — runs automatically every 24 hours. Performs a deep audit of source code, documentation, skills, memory files, tasks, and projects. Creates inbox tasks for actionable improvements.
 
 **Post-task reflection** (`skills/task-reflect/`) — triggered after each completed task. Lightweight: organizes memory and evaluates whether the work should be captured as a reusable skill.
 

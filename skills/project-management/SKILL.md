@@ -1,7 +1,7 @@
 ---
 name: project-management
 description: Create and manage projects under projects/. Each project gets its own directory with scripts, data, and state files. Register every project in projects/INDEX.md.
-related_skills: toolbox
+related_skills: daily-reflect
 ---
 
 # Project Skill
@@ -37,7 +37,7 @@ If cron is needed, create trigger scripts that drop inbox files for the schedule
 
 ## Cron Rules
 
-- Cron always points to `projects/<name>/scripts/`, never to toolbox
+- Cron always points to `projects/<name>/scripts/`
 - Scripts must be idempotent
 - Include error handling (`set -euo pipefail`)
 
@@ -56,5 +56,5 @@ When a project is no longer active:
 
 - All projects under `projects/`, nothing at runtime root level
 - `projects/INDEX.md` must stay current
-- Project-specific scripts stay in their own directory, never in toolbox
+- Project-specific scripts stay in their own directory
 - Temp files go in `temp/`, cleaned on restart
