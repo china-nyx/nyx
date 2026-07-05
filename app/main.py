@@ -10,6 +10,7 @@ import os
 import signal
 import time
 from pathlib import Path
+from typing import Optional
 
 from app.config import config
 from sdk.git import Git
@@ -57,20 +58,25 @@ class Agent:
 
     # ── Post-task reflection ────────────────────────────────────────
 
-    def _maybe_post_task_reflect(self, tid: str, requirement: str):
-        """Drop a lightweight post-task reflection inbox file after task completion."""
+    def _build_reflection_prompt(self) -> Optional[str]:
+        """Build reflection prompt from task-reflect SKILL.md."""
         skill_file = config.skills_dir / "task-reflect" / "SKILL.md"
         if not skill_file.exists():
             skill_file = config.repo / "skills" / "task-reflect" / "SKILL.md"
         if not skill_file.exists():
-            return
+            return None
+        return skill_file.read_text(encoding="utf-8")
 
-        requirement_text = skill_file.read_text(encoding="utf-8")
-        inbox_file = config.inbox_dir / f"50-task-reflect-{tid}.md"
-        # Append the completed task's requirement so the reflector knows what was done
-        full_req = f"{requirement_text}\n\n## Completed Task\n{requirement}"
-        inbox_file.write_text(full_req, encoding="utf-8")
-        logger.info(f"[{tid}] dropped post-task reflection: {inbox_file.name}")
+    def _save_reflection(self, tid: str, reflection: str):
+        """Save post-task reflection to task directory."""
+        try:
+            from sdk.fs import ensure_dir
+            task_dir = config.task_dir / tid
+            ensure_dir(task_dir)
+            (task_dir / "reflection.md").write_text(reflection, encoding="utf-8")
+            logger.info(f"[{tid}] saved reflection ({len(reflection)} chars)")
+        except Exception:
+            logger.exception(f"[{tid}] failed to save reflection")
 
     # ── Tick loop ───────────────────────────────────────
 
@@ -126,18 +132,21 @@ class Agent:
             except Exception:
                 pass
 
-        result = executor.run(
-            lambda: solver.solve(self.llm, self._executor, ALL_TOOLS, requirement, tid=tid),
+        reflect_prompt = self._build_reflection_prompt()
+        task_output, reflection = executor.run(
+            lambda: solver.solve(self.llm, self._executor, ALL_TOOLS, requirement,
+                                 tid=tid, reflect_prompt=reflect_prompt),
             on_change=on_code_change)
 
-        if not result:
+        if not task_output:
             return "no result yet; will retry"
 
         # No code change — mark done here
-        scheduler.mark_done(tid, result)
+        scheduler.mark_done(tid, task_output)
 
-        # Trigger post-task reflection (lightweight: memory + skill evaluation)
-        self._maybe_post_task_reflect(tid, requirement)
+        # Save reflection output (if post-task reflection hook ran)
+        if reflection:
+            self._save_reflection(tid, reflection)
 
         return "solved"
 

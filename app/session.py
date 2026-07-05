@@ -4,7 +4,7 @@ import logging
 import re
 import time
 from pathlib import Path
-from typing import Callable, Dict, List, Optional
+from typing import Callable, Dict, List, Optional, Tuple
 
 from app.config import config
 from sdk.fs import ensure_dir
@@ -120,10 +120,12 @@ def run_session(llm, executor, *,
                 system_prompt: str, requirement: str,
                 tools: List[Dict] = None, temperature: float = 0.5,
                 prune_sessions: bool = False,
-                log_run: bool = False) -> str:
+                log_run: bool = False,
+                reflect_prompt: Optional[str] = None) -> Tuple[str, Optional[str]]:
     """Run an agent session with shared setup (session file, hooks, run_agent).
 
-    Returns the assistant's final text content.
+    Returns:
+        (task_output, reflection) tuple. reflection is None if no reflect_prompt was given.
 
     Args:
         role: "solver" or "hotfixer"
@@ -134,6 +136,7 @@ def run_session(llm, executor, *,
         temperature: model temperature
         prune_sessions: if True, prune old session files beyond KEEP_SESSIONS
         log_run: if True, write a "run" record at start and "output" record at end
+        reflect_prompt: if set, inject one extra reflection turn after task completion
     """
     from sdk.agent import run_agent
 
@@ -155,15 +158,21 @@ def run_session(llm, executor, *,
     from app.hooks import (
         CompactionHook,
         DuplicateOutputPruner,
+        PostTaskReflectHook,
         RepetitiveCallGuard,
         StepLogger,
     )
-    _hooks = CompositeHooks(
+    _reflect_hook: Optional[PostTaskReflectHook] = None
+    if reflect_prompt is not None:
+        _reflect_hook = PostTaskReflectHook(reflect_prompt)
+    _hook_list = [
         RepetitiveCallGuard(),
         DuplicateOutputPruner(),
         StepLogger(_on_step),
         CompactionHook(config.compaction_settings, context_window=config.context_window),
-    )
+        _reflect_hook,
+    ]
+    _hooks = CompositeHooks(*_hook_list)
 
     _model = config.llm_model
     _n_tools = len(tools) if tools else 0
@@ -177,7 +186,7 @@ def run_session(llm, executor, *,
             "cwd": str(config.home),
         })
 
-    res = run_agent(llm,
+    result = run_agent(llm,
         messages=[ChatMessage(role="system", content=system_prompt)],
         tool_executor=executor, tools=tools,
         model=config.llm_model,
@@ -185,16 +194,18 @@ def run_session(llm, executor, *,
         context_window=config.context_window,
         hooks=_hooks)
 
+    task_output = (result.message.content or "").strip()
+    reflection = None
+    if _reflect_hook and _reflect_hook.reflection:
+        reflection = _reflect_hook.reflection.strip() or None
+
     # Print thought on a separate line if present
-    thought = res.content or ""
-    if thought:
-        logger.info(f"[thought] {thought}")
+    if task_output:
+        logger.info(f"[thought] {task_output}")
 
-    out = thought.strip()
-
-    logger.info(f"[session] {role} end tid={tid}, output={len(out)} chars")
+    logger.info(f"[session] {role} end tid={tid}, output={len(task_output)} chars")
 
     if log_run:
-        _write_session_record(sess_path, {"type": "output", "text": out})
+        _write_session_record(sess_path, {"type": "output", "text": task_output})
 
-    return out
+    return task_output, reflection

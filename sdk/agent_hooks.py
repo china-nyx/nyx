@@ -25,6 +25,17 @@ class BeforeToolCallResult:
 
 
 @dataclass(frozen=True)
+class AfterLlmCallResult:
+    """Return from after_llm_call to modify the message or control flow.
+
+    Omitted fields (None) keep their original values.
+    """
+    message: Optional[Dict[str, Any]] = None       # replace message fields
+    continue_loop: bool = False                     # if True, don't exit even with no tool calls
+    messages_to_append: List[ChatMessage] = None   # append these before continuing
+
+
+@dataclass(frozen=True)
 class AfterToolCallResult:
     """Return from after_tool_call to modify the tool result.
 
@@ -56,7 +67,7 @@ class AgentHooks(Protocol):
     def before_llm_call(self, messages: List[ChatMessage],
                         ctx: HookContext) -> Optional[List[ChatMessage]]: ...
     def after_llm_call(self, message: Dict[str, Any],
-                       ctx: HookContext) -> Optional[Dict[str, Any]]: ...
+                       ctx: HookContext) -> Optional[AfterLlmCallResult]: ...
 
     # ── Tool call hooks ──────────────────────────────────────────────
     def before_tool_call(self, name: str, args: Dict[str, Any],
@@ -89,13 +100,26 @@ class CompositeHooks:
         return cur if cur is not messages else None
 
     def after_llm_call(self, message: Dict[str, Any],
-                       ctx: HookContext) -> Optional[Dict[str, Any]]:
-        cur = message
+                       ctx: HookContext) -> Optional[AfterLlmCallResult]:
+        combined_msg: Optional[Dict[str, Any]] = None
+        continue_loop = False
+        append_msgs: List[ChatMessage] = []
         for h in self._hooks:
-            r = getattr(h, 'after_llm_call', lambda *a: None)(cur, ctx)
-            if r is not None:
-                cur = r
-        return cur if cur is not message else None
+            r = getattr(h, 'after_llm_call', lambda *a: None)(message, ctx)
+            if isinstance(r, AfterLlmCallResult):
+                if r.message is not None:
+                    combined_msg = r.message
+                if r.continue_loop:
+                    continue_loop = True
+                if r.messages_to_append:
+                    append_msgs.extend(r.messages_to_append)
+        if combined_msg is not None or continue_loop or append_msgs:
+            return AfterLlmCallResult(
+                message=combined_msg,
+                continue_loop=continue_loop,
+                messages_to_append=append_msgs or None,
+            )
+        return None
 
     # ── Tool call hooks ──────────────────────────────────────────────
 

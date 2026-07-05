@@ -9,8 +9,9 @@ def fix(llm, executor, requirement: str, tid: str = "") -> str:
     """Run a hotfix LLM session. Returns assistant text (for executor → commit message)."""
     system_prompt = get_hotfixer_template(requirement)
     
-    return run_session(llm, executor,
+    out, _ = run_session(llm, executor,
                        role="hotfixer", tid=tid,
                        system_prompt=system_prompt,
                        requirement=requirement,
                        temperature=0.5)
+    return out

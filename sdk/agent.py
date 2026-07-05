@@ -9,6 +9,7 @@ import logging
 from typing import Callable, Dict, List, Optional
 
 from sdk.agent_hooks import (
+    AfterLlmCallResult,
     AgentHooks,
     HookContext,
 )
@@ -18,7 +19,7 @@ from sdk.agent_hooks import (
 from sdk.schemas import (
     AssistantMessage,
     ChatMessage,
-    ChatCompletionResponse,
+    ChatResponseMessage,
     ResponseFormat,
 )
 from sdk.tools import ALL_TOOLS
@@ -43,11 +44,6 @@ def _prune_tool_output(name: str, content: str, max_chars: int = 8000) -> str:
 
 
 
-
-
-def _msgs_to_dicts(msgs: list[ChatMessage]) -> list[dict]:
-    """Convert ChatMessage list to raw dict list for internal functions."""
-    return [m.model_dump(exclude_none=True) for m in msgs]
 
 
 # Default context window when the caller doesn't supply one.
@@ -77,8 +73,10 @@ def run_agent(llm, messages: list[ChatMessage],
                Built by the caller.
 
     Returns:
-        AssistantMessage with content set to the final text response.
+        AssistantMessage with content set to the task result.
     """
+
+    _task_content: Optional[str] = None  # first text-only response (saved when hook continues)
     tools = tools or ALL_TOOLS
     _response_format = response_format
     _context_window = context_window
@@ -125,13 +123,31 @@ def run_agent(llm, messages: list[ChatMessage],
             break
 
         message = resp.choices[0].message
+
+        # ── after_llm_call hook (after each LLM response) ────────────
+        r = hooks.after_llm_call(message.model_dump(), ctx)
+        if r and r.message is not None:
+            message = ChatResponseMessage(**r.message)
+
         tool_calls = message.tool_calls or []
 
-        # ── No tool calls → exit ─────────────────────────────────────
+        # ── No tool calls → exit (or continue via hook) ──────────────
         if not tool_calls:
             content = message.content or ""
+
+            # Check if after_llm_call requested to continue the loop
+            if r and r.continue_loop:
+                _task_content = content  # save task result before continuing
+                msgs.append(ChatMessage(role=message.role, content=message.content))
+                if r.messages_to_append:
+                    msgs.extend(r.messages_to_append)
+                continue
+
             _emit("turn_end", {"content": content})
-            return AssistantMessage(content=content)
+            # Return the task result (before any hook-injected extra turn)
+            return AssistantMessage(
+                content=_task_content if _task_content is not None else content,
+            )
 
         # ── Tool calls → execute with hooks ───────────────────────────
         msgs.append(ChatMessage(role=message.role, content=message.content,

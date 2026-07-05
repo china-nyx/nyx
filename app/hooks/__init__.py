@@ -7,10 +7,12 @@ from .repetitive_guard import RepetitiveCallGuard
 from .duplicate_pruner import DuplicateOutputPruner
 from .step_logger import StepLogger
 from .compaction import CompactionHook
+from .post_task_reflect import PostTaskReflectHook
 
 __all__ = [
     "RepetitiveCallGuard",
     "DuplicateOutputPruner",
     "StepLogger",
     "CompactionHook",
+    "PostTaskReflectHook",
 ]
