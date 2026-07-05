@@ -99,17 +99,14 @@ def run_agent(llm, messages: list[ChatMessage],
             break
 
         message = resp.choices[0].message
-
-        # ── after_llm_call hook (after each LLM response) ────────────
-        r = hooks.after_llm_call(message.model_dump(), ctx)
-
         tool_calls = message.tool_calls or []
 
         # ── No tool calls → exit (or continue via hook) ──────────────
         if not tool_calls:
             content = message.content or ""
 
-            # Check if after_llm_call requested to continue the loop
+            # on_turn_complete hook (before exit — like pi's getFollowUpMessages)
+            r = hooks.on_turn_complete(message, ctx)
             if r and r.continue_loop:
                 _task_content = content  # save task result before continuing
                 msgs.append(ChatMessage(role=message.role, content=message.content))

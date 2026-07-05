@@ -10,7 +10,7 @@ import logging
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Protocol, runtime_checkable
 
-from sdk.schemas import ChatMessage
+from sdk.schemas import ChatMessage, ChatResponseMessage
 
 logger = logging.getLogger(__name__)
 
@@ -25,12 +25,12 @@ class BeforeToolCallResult:
 
 
 @dataclass(frozen=True)
-class AfterLlmCallResult:
-    """Return from after_llm_call to control agent loop flow.
+class TurnCompleteResult:
+    """Return from on_turn_complete to control exit behavior.
 
     Omitted fields (None) keep their original values.
     """
-    continue_loop: bool = False                     # if True, don't exit even with no tool calls
+    continue_loop: bool = False                     # if True, don't exit, run another iteration
     messages_to_append: List[ChatMessage] = None   # append these before continuing
 
 
@@ -65,8 +65,8 @@ class AgentHooks(Protocol):
     # ── LLM call boundary hooks ──────────────────────────────────────
     def before_llm_call(self, messages: List[ChatMessage],
                         ctx: HookContext) -> Optional[List[ChatMessage]]: ...
-    def after_llm_call(self, message: Dict[str, Any],
-                       ctx: HookContext) -> Optional[AfterLlmCallResult]: ...
+    def on_turn_complete(self, message: 'ChatResponseMessage',
+                          ctx: HookContext) -> Optional[TurnCompleteResult]: ...
 
     # ── Tool call hooks ──────────────────────────────────────────────
     def before_tool_call(self, name: str, args: Dict[str, Any],
@@ -98,19 +98,19 @@ class CompositeHooks:
                 cur = r
         return cur if cur is not messages else None
 
-    def after_llm_call(self, message: Dict[str, Any],
-                       ctx: HookContext) -> Optional[AfterLlmCallResult]:
+    def on_turn_complete(self, message: 'ChatResponseMessage',
+                          ctx: HookContext) -> Optional[TurnCompleteResult]:
         continue_loop = False
         append_msgs: List[ChatMessage] = []
         for h in self._hooks:
-            r = getattr(h, 'after_llm_call', lambda *a: None)(message, ctx)
-            if isinstance(r, AfterLlmCallResult):
+            r = getattr(h, 'on_turn_complete', lambda *a: None)(message, ctx)
+            if isinstance(r, TurnCompleteResult):
                 if r.continue_loop:
                     continue_loop = True
                 if r.messages_to_append:
                     append_msgs.extend(r.messages_to_append)
         if continue_loop or append_msgs:
-            return AfterLlmCallResult(
+            return TurnCompleteResult(
                 continue_loop=continue_loop,
                 messages_to_append=append_msgs or None,
             )
