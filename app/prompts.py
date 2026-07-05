@@ -29,6 +29,7 @@ Source repo: {repo}
 
 Everything under {cwd} is your runtime workspace (read-write):
   - {sandbox}/ → projects, research, data, and persistent notes
+  - sandbox/temp/ → temporary working files (use this for scratch work, cleaned on restart)
   - memory/ → persistent knowledge (read INDEX.md for entry point; create/update files as needed)
   - skills/ → runtime skills (override built-in by name)
     Built-in skills are loaded from the source repo at runtime.
@@ -39,7 +40,7 @@ Everything under {cwd} is your runtime workspace (read-write):
 
 # ── Common builder ────────────────────────────────────────────────
 
-def _build_prompt(role_desc: str, requirement: str, extra: str = "") -> str:
+def _build_prompt(role_desc: str, requirement: str, extra: str = "", tid: str = None) -> str:
     """Build system prompt with base + skills + requirement + optional extra sections."""
     skill_index = scan_skills(config.repo / "skills", config.skills_dir)
     base = SHARED_BASE.format(
@@ -48,8 +49,9 @@ def _build_prompt(role_desc: str, requirement: str, extra: str = "") -> str:
         repo=str(config.repo),
         sandbox=str(config.sandbox_dir),
     )
+    tid_section = f"\n\n## Current Task ID\n{tid}" if tid else ""
     
-    return base + (f"\n\n## Available Skills\n{skill_index}\n" if skill_index else "") + f"""
+    return base + tid_section + (f"\n\n## Available Skills\n{skill_index}\n" if skill_index else "") + f"""
 
 ## Requirement
 {requirement}""" + extra
@@ -57,11 +59,12 @@ def _build_prompt(role_desc: str, requirement: str, extra: str = "") -> str:
 
 # ── Solver template ──────────────────────────────────────────────
 
-def get_solver_template(requirement: str) -> str:
+def get_solver_template(requirement: str, tid: str = None) -> str:
     """Get solver system prompt with skills."""
     return _build_prompt(
         role_desc="Solve tasks by actually executing work with your tools.",
         requirement=requirement,
+        tid=tid,
         extra="""
 
 ## Task Completion
