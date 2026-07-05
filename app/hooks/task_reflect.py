@@ -7,7 +7,7 @@ from sdk.agent_hooks import BeforeTurnEndResult, HookContext
 from sdk.schemas import ChatMessage, ChatResponseMessage
 
 
-class PostTaskReflectHook:
+class TaskReflectHook:
     """Inject one reflection turn after the agent finishes (no tool calls).
 
     Implements ``before_turn_end`` — when the agent would exit, this hook

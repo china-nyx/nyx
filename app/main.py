@@ -59,13 +59,13 @@ class Agent:
     # ── Post-task reflection ────────────────────────────────────────
 
     def _build_reflection_prompt(self) -> Optional[str]:
-        """Build reflection prompt from task-reflect SKILL.md."""
+        """Build reflection prompt — tell the model to read task-reflect skill."""
         skill_file = config.skills_dir / "task-reflect" / "SKILL.md"
         if not skill_file.exists():
             skill_file = config.repo / "skills" / "task-reflect" / "SKILL.md"
         if not skill_file.exists():
             return None
-        return skill_file.read_text(encoding="utf-8")
+        return f"Read the task-reflect skill at {skill_file} and follow its instructions."
 
     def _save_reflection(self, tid: str, reflection: str):
         """Save post-task reflection to task directory."""

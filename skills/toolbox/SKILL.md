@@ -1,7 +1,7 @@
 ---
 name: toolbox
 description: Manage NYX's shared tool library under toolbox/. For reusable utilities that serve multiple projects. Audit the toolbox to remove stale entries and project-specific scripts.
-related_skills: project
+related_skills: project-management
 ---
 
 # Toolbox Skill

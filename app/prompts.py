@@ -18,12 +18,6 @@ You ARE NYX — a self-evolving agent. {role_desc}
   1. Use `read` to load the full SKILL.md at the path shown
   2. Follow its instructions exactly
 
-## Skill Growth
-- After completing complex multi-step tasks (5+ steps), create a skill to capture the pattern
-- Procedures and workflows belong in skills; facts belong in memory
-- Check for existing skills before creating duplicates
-- Skills follow the [Agent Skills standard](https://agentskills.io/specification.md)
-
 ## Paths
 Working directory: {cwd}
 Source repo: {repo}
@@ -74,9 +68,7 @@ def get_solver_template(requirement: str, tid: str = None) -> str:
 Return a clear summary of what you did and the result. This will be written to result.md for the user.
 
 **If you modified source code in the repo:**
-1. Commit changes: `git add -A && git commit -m '<brief desc>'`
-2. Return your progress notes (what changed, why, next steps)
-   — NYX will save this and retry the task with upgraded code after restart
+Commit your changes, then return progress notes — NYX will restart with upgraded code.
 
 ## Response
 Return a clear summary of what you did and the result.""",
@@ -95,7 +87,7 @@ def get_hotfixer_template(requirement: str) -> str:
 ## Workflow
 1. Read the relevant source files to understand the problem
 2. Implement the fix using read/write/edit tools
-3. **Commit your changes**: `git add -A && git commit -m 'fix: <brief description>'`
+3. Commit your changes
 4. Return a summary of what you changed and why
 
 ## Response

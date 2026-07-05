@@ -1,5 +1,5 @@
 ---
-name: project
+name: project-management
 description: Create and manage projects under projects/. Each project gets its own directory with scripts, data, and state files. Register every project in projects/INDEX.md.
 related_skills: toolbox
 ---

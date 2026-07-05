@@ -158,14 +158,14 @@ def run_session(llm, executor, *,
     from app.hooks import (
         CompactionHook,
         DuplicateOutputPruner,
-        PostTaskReflectHook,
+        TaskReflectHook,
         RepetitiveCallGuard,
         StepLogger,
         ToolCallValidator,
     )
-    _reflect_hook: Optional[PostTaskReflectHook] = None
+    _reflect_hook: Optional[TaskReflectHook] = None
     if reflect_prompt is not None:
-        _reflect_hook = PostTaskReflectHook(reflect_prompt)
+        _reflect_hook = TaskReflectHook(reflect_prompt)
     _hook_list = [
         RepetitiveCallGuard(),
         DuplicateOutputPruner(),
