@@ -27,23 +27,6 @@ from sdk.tools import ALL_TOOLS
 logger = logging.getLogger(__name__)
 
 
-# ── Tool output pruning ──────────────────────────────────────────────
-
-def _prune_tool_output(name: str, content: str, max_chars: int = 8000) -> str:
-    """Prune large tool outputs to save context tokens while preserving useful info."""
-    if len(content) <= max_chars:
-        return content
-    half = max_chars // 2 - 100
-    kept_lines_start = content[:half].count("\n")
-    kept_lines_end = content[-half:].count("\n")
-    skipped_lines = content.count("\n") - kept_lines_start - kept_lines_end
-    truncated = (content[:half]
-                 + f"\n... [{skipped_lines} lines / {len(content) - max_chars:,} chars omitted] ...\n"
-                 + content[-half:])
-    return truncated
-
-
-
 
 
 # Default context window when the caller doesn't supply one.
@@ -184,15 +167,12 @@ def run_agent(llm, messages: list[ChatMessage],
                 if modified.terminate:
                     _terminate_batch = True
 
-            # Prune large outputs for token safety
-            tool_content = _prune_tool_output(name, final_content[:10000])
-
             _emit("tool_call_end", {"name": name, "args": args, "error": final_err})
 
-            msgs.append(ChatMessage(role="tool", tool_call_id=tc.id, content=tool_content))
+            msgs.append(ChatMessage(role="tool", tool_call_id=tc.id, content=final_content))
 
             if _terminate_batch:
-                return AssistantMessage(content=final_content[:300])
+                return AssistantMessage(content=final_content)
 
     logger.warning(f"[agent] exiting with error after {_iteration} iterations: no valid response from LLM")
     return AssistantMessage(content="")
