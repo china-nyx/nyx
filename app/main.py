@@ -49,12 +49,12 @@ class Agent:
     def _executor(self, name, args):
         return self.ftools.execute(name, args)
 
-    # ── Self-reflection ───────────────────────────────────────
+    # ── Daily reflection ───────────────────────────────────────
 
-    def _maybe_self_reflect(self):
-        """If enough time has passed since last self-reflection, drop an inbox file."""
-        from app import self_reflect
-        self_reflect.maybe_drop()
+    def _maybe_daily_reflect(self):
+        """If enough time has passed since last daily reflection, drop an inbox file."""
+        from app import daily_reflect
+        daily_reflect.maybe_drop()
 
     # ── Post-task reflection ────────────────────────────────────────
 
@@ -82,7 +82,7 @@ class Agent:
         if not _running:
             return None
 
-        self._maybe_self_reflect()
+        self._maybe_daily_reflect()
         ingested = scheduler.ingest_inbox()
 
         picked = scheduler.pick_next_task()

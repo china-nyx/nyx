@@ -31,7 +31,7 @@ Memory is NYX's persistent state across restarts. The **only required file** is 
 
 ## Reading Memory
 
-When starting work or doing self-reflection:
+When starting work or doing daily reflection:
 
 1. **Read `memory/INDEX.md` first** — understand what exists
 2. Read files that are relevant to the current task
@@ -43,7 +43,7 @@ Create files as needed. After creating or updating any file, **refresh INDEX.md*
 
 ## Cleanup
 
-Periodically (during self-reflection):
+Periodically (during daily reflection):
 - Remove files that are no longer useful
 - Merge or compress large files if they grow unwieldy
 - Keep INDEX.md current after any changes

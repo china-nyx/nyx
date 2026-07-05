@@ -222,7 +222,7 @@ When a project is no longer active:
 - **No scripts leaked into toolbox** — project-specific scripts stay in their project directory
 - **Temp files go in temp/** — intermediate data, downloads, test output. Never leave them in data/, insights/, or at sandbox root
 - **`sandbox/temp/` is global scratch space** — cleaned on each restart; nothing here survives a reboot
-- **`projects/<name>/temp/` is project-local scratch space** — cleaned by self-reflect if files are older than 7 days
+- **`projects/<name>/temp/` is project-local scratch space** — cleaned by daily-reflect if files are older than 7 days
 
 ## When to Use This Skill
 
