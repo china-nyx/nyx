@@ -1,10 +1,13 @@
 """Post-task reflection hook — injects a reflection turn after task completion."""
 from __future__ import annotations
 
+import logging
 from typing import Optional
 
 from sdk.agent_hooks import BeforeTurnEndResult, HookContext
 from sdk.schemas import ChatMessage, ChatResponseMessage
+
+logger = logging.getLogger(__name__)
 
 
 class TaskReflectHook:
@@ -26,8 +29,10 @@ class TaskReflectHook:
         if self._used:
             # Second text-only turn — this is the reflection response
             self.reflection = message.content or ""
+            logger.info(f"[task-reflect] done, {len(self.reflection)} chars")
             return None
         self._used = True
+        logger.info("[task-reflect] starting post-task reflection turn")
         return BeforeTurnEndResult(
             continue_loop=True,
             messages_to_append=[
