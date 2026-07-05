@@ -32,8 +32,8 @@ crash ─▶ boot/main catches exception ─▶ self-heal → executor.run(hotfi
 
 ```
 app/        — boot, config, executor, hotfixer, log, main, prompts,
-              scheduler, self_heal, self_reflect, session, solver
-sdk/        — agent.py (loop), compaction.py, llm.py, tools.py, fs.py,
+              scheduler, self_heal, daily_reflect, session, solver
+sdk/        — agent.py (loop), hooks/, llm.py, tools.py, fs.py,
               git.py, skills.py, schemas.py
 skills/     — built-in skills (loaded at runtime from source repo)
 deploy/     — systemd unit template
@@ -66,23 +66,22 @@ NYX manages requirements as tasks with an OS-like scheduler:
 
 - **4 base tools** (`bash`, `read`, `write`, `edit`) are the only code-level capabilities.
 - **Built-in skills** live in the source repo (`skills/`) and are loaded directly from there.
-  They cover generic agent behavior like self-reflection and memory management.
+  They cover generic agent behavior like daily reflection, post-task reflection, and memory management.
 - **Runtime skills** go directly in `skills/<name>/SKILL.md` (under cwd). They override
   built-in skills by name — if a runtime skill has the same name as a built-in one,
   the runtime version is used. This lets you customize or extend behavior without touching code.
 - The agent reads a skill's SKILL.md and executes its steps using the base tools.
   No code change needed to add new capabilities.
 
-### Self-Reflection
+### Daily Reflection & Post-Task Reflection
 
-NYX periodically audits itself — source code, documentation, skills, memory files,
-tasks, and even its own self-reflect procedure. Every cycle aims to leave the workspace
-in a slightly better state: summarize stale entries, fix drift between docs and reality,
-improve skill steps, discover capability gaps.
+NYX has two layers of self-improvement:
 
-Self-reflection runs automatically every 3600 seconds (configurable via `NYX_SELF_REFLECT_SEC`).
+**Daily reflection** (`skills/daily-reflect/`) — runs automatically every 24 hours. Performs a deep audit of source code, documentation, skills, memory files, tasks, and sandbox. Creates inbox tasks for actionable improvements.
 
-To customize what self-reflect audits, place your own SKILL.md at `skills/self-reflect/SKILL.md` (under cwd) — it shadows the built-in version. NYX can also improve its own SKILL.md during reflection cycles without a restart.
+**Post-task reflection** (`skills/post-task-reflect/`) — triggered after each completed task. Lightweight: organizes memory and evaluates whether the work should be captured as a reusable skill.
+
+To customize daily reflection, place your own SKILL.md at `skills/daily-reflect/SKILL.md` (under cwd) — it shadows the built-in version.
 
 ## Safety model
 
@@ -161,6 +160,6 @@ The following settings can be overridden via environment variables:
 | Env Var | Setting | Default |
 |---------|---------|----------|
 | `NYX_REQ_RETRY_SEC` | seconds between retry attempts for same task | 25 |
-| `NYX_SELF_REFLECT_SEC` | seconds between self-reflection cycles | 3600 |
+| `NYX_DAILY_REFLECT_SEC` | seconds between daily reflection cycles | 86400 |
 
 See `app/config.py` for all keys and their defaults.

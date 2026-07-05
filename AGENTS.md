@@ -38,7 +38,7 @@ Topics covered in README.md (see there for details):
 - [How NYX works](README.md#how-it-works) — solver / hotfixer / executor flow
 - [OS Process Model](README.md#os-process-model) — task lifecycle and scheduling
 - [Skills overview](README.md#skills) — runtime vs built-in skills
-- [Self-Reflection](README.md#self-reflection) — periodic self-audit
+- [Daily Reflection & Post-Task Reflection](README.md#daily-reflection--post-task-reflection) — two layers of self-improvement
 - [Running NYX](README.md#running-it) — setup, systemd, launching
 - [Sending Tasks](README.md#sending-tasks) — filename convention (priority parsed from prefix)
 - [Configuration](README.md#configuration) — settings.json keys and env var overrides
