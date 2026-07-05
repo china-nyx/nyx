@@ -3,6 +3,8 @@ __pycache__/
 *.pyc
 *.log
 data/
+mailbox/
+task/
 pi-sandbox/
 *.swp
 sandbox/
