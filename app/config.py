@@ -34,6 +34,7 @@ class Config(BaseModel):
     # ── agent behavior ─────────────────────────────────────────
     req_retry_sec: int = 25           # seconds between retry attempts for same task
     daily_reflect_sec: int = 86400     # seconds between daily reflection cycles (1 day)
+    context_window: int = 256_000      # LLM context window size in tokens
 
     # ── compaction ─────────────────────────────────────────────
     compaction_settings: CompactionSettings = Field(

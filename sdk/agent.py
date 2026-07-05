@@ -16,7 +16,7 @@ from sdk.agent_hooks import (
 )
 from sdk.hooks.compaction import clamp_max_tokens, estimate_context_tokens
 from sdk.hooks import (  # noqa: F401
-    DefaultCompactionHook,
+    CompactionHook,
     DuplicateOutputPruner,
     RepetitiveCallGuard,
     StepLogger,
@@ -64,10 +64,10 @@ def _msgs_to_dicts(msgs: list[ChatMessage]) -> list[dict]:
 
 
 # Default context window when the caller doesn't supply one.
-_DEFAULT_CONTEXT_WINDOW = 128_000
+_DEFAULT_CONTEXT_WINDOW = 256_000
 
 
-def _build_default_hooks(on_step, terminal_tools, compaction_settings):
+def _build_default_hooks(on_step, terminal_tools, compaction_settings, context_window):
     """Build the default hook chain that reproduces legacy behaviour."""
     from sdk.hooks.compaction import CompactionSettings
 
@@ -76,7 +76,7 @@ def _build_default_hooks(on_step, terminal_tools, compaction_settings):
         parts.append(TerminalToolHook(terminal_tools))
     if on_step:
         parts.append(StepLogger(on_step))
-    parts.append(DefaultCompactionHook(compaction_settings or CompactionSettings()))
+    parts.append(CompactionHook(compaction_settings or CompactionSettings(), context_window=context_window))
     return CompositeHooks(*parts)
 
 
@@ -113,7 +113,7 @@ def run_agent(client: ChatClient, messages: list[ChatMessage],
 
     # Build default hooks for backward compatibility when caller passes None
     if hooks is None:
-        hooks = _build_default_hooks(on_step, terminal_tools, compaction_settings)
+        hooks = _build_default_hooks(on_step, terminal_tools, compaction_settings, context_window)
 
     def _emit(event_type: str, data: Dict):
         hooks.on_event(event_type, data)

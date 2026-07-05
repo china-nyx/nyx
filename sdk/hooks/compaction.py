@@ -1,7 +1,7 @@
 """Compaction — token estimation, trigger detection, and hook implementation.
 
 Pure functions (estimate_tokens, clamp_max_tokens, should_compact) are used by
-agent.py for context management.  DefaultCompactionHook plugs into the agent loop
+agent.py for context management.  CompactionHook plugs into the agent loop
 via transform_context + should_continue_after_text.
 """
 from __future__ import annotations
@@ -101,28 +101,28 @@ def _compact_response_format() -> ResponseFormat:
     )
 
 
-# ── Default Compaction Hook ──────────────────────────────────────────
+# ── Compaction Hook ───────────────────────────────────────────────────
 
-class DefaultCompactionHook:
-    """Default compaction hook — reproduces current NYX compaction behaviour.
+class CompactionHook:
+    """Compaction hook — compresses conversation history when context window is full.
 
     Uses only generic hooks (transform_context + should_continue_after_text).
     The loop has zero knowledge of compaction.
 
     Lifecycle:
-    1. transform_context detects context is too large → injects instruction + schema
+    1. transform_context detects tokens approaching limit → injects summary instruction
     2. Loop calls LLM → gets text response (summary JSON)
     3. should_continue_after_text intercepts the text response, parses summary,
-       replaces history with initial_msgs + [summary], returns new msgs to continue
+       replaces history with [system message] + [summary], returns new msgs to continue
     """
 
-    def __init__(self, settings: Any = None, context_window: int = 128_000):
+    def __init__(self, settings: Any = None, context_window: int = 256_000):
         self._settings = settings or CompactionSettings()
         self._context_window = context_window
 
         # Internal state
         self._in_compaction_mode = False
-        self._initial_messages: List[ChatMessage] = []
+        self._system_message: Optional[ChatMessage] = None
         self._retry_short_summary = False
 
     def _estimate_tokens(self, messages: List[ChatMessage]) -> int:
@@ -140,9 +140,9 @@ class DefaultCompactionHook:
     def transform_context(self, messages: List[ChatMessage],
                           response_format: Optional[ResponseFormat],
                           ctx: HookContext) -> Optional[TransformContextResult]:
-        # Save initial messages on first call
-        if not self._initial_messages:
-            self._initial_messages = list(messages)
+        # Capture system message on first call (messages[0] is the system prompt)
+        if self._system_message is None:
+            self._system_message = messages[0]
 
         # ── Phase 0: Check if we should enter compaction mode ─────────
         if not self._in_compaction_mode:
@@ -212,6 +212,6 @@ class DefaultCompactionHook:
             f"[COMPACTED HISTORY]\n{_summary}\n\n"
             f"Continue working from where you left off."
         ))
-        new_msgs = list(self._initial_messages) + [summary_msg]
+        new_msgs = [self._system_message, summary_msg]
         logger.info(f"[compaction] done, summary={len(_summary)} chars, msgs now={len(new_msgs)}")
         return new_msgs

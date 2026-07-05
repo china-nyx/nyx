@@ -166,7 +166,8 @@ def run_session(llm, executor, *,
         messages=[ChatMessage(role="system", content=system_prompt)],
         tool_executor=executor, tools=tools,
         temperature=temperature, on_step=_on_step,
-        compaction_settings=config.compaction_settings)
+        compaction_settings=config.compaction_settings,
+        context_window=config.context_window)
 
     # Print thought on a separate line if present
     thought = res.get("content") or ""

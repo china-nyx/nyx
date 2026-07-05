@@ -7,12 +7,12 @@ from .repetitive_guard import RepetitiveCallGuard
 from .duplicate_pruner import DuplicateOutputPruner
 from .terminal_tool import TerminalToolHook
 from .step_logger import StepLogger
-from .compaction import DefaultCompactionHook
+from .compaction import CompactionHook
 
 __all__ = [
     "RepetitiveCallGuard",
     "DuplicateOutputPruner",
     "TerminalToolHook",
     "StepLogger",
-    "DefaultCompactionHook",
+    "CompactionHook",
 ]
