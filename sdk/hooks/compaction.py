@@ -24,9 +24,7 @@ class CompactionSettings:
     """Knobs controlling compaction behaviour."""
 
     enabled: bool = True
-    reserve_tokens: int = 16384       # trigger when remaining < this many tokens
-    compact_at: int = 100             # msg_count threshold to trigger compaction
-    cooldown_messages: int = 10       # min new msgs since last compaction before re-trigger
+    reserve_tokens: int = 16384       # trigger when remaining headroom < this many tokens
 
 
 # ── Token estimation (pure functions) ───────────────────────────────
@@ -58,23 +56,12 @@ def clamp_max_tokens(requested: int, context_tokens: int, context_window: int) -
     return max(256, min(requested, headroom))
 
 
-def should_compact(context_tokens: int, msg_count: int,
-                   context_window: int, settings: CompactionSettings,
-                   last_compaction_msg_count: int = 0) -> bool:
-    """Check if compaction should trigger based on token count or message count."""
+def should_compact(context_tokens: int, context_window: int,
+                   settings: CompactionSettings) -> bool:
+    """Check if compaction should trigger based on remaining headroom."""
     if not settings.enabled:
         return False
-
-    # Token-based trigger (always urgent — no cooldown)
-    token_triggered = context_tokens > (context_window - settings.reserve_tokens)
-
-    # Message-count trigger (subject to cooldown)
-    msg_triggered = msg_count > settings.compact_at
-    if msg_triggered and last_compaction_msg_count > 0:
-        if (msg_count - last_compaction_msg_count) < settings.cooldown_messages:
-            msg_triggered = False
-
-    return token_triggered or msg_triggered
+    return context_tokens > (context_window - settings.reserve_tokens)
 
 
 # ── Default compaction instruction ───────────────────────────────────
@@ -136,7 +123,6 @@ class DefaultCompactionHook:
         # Internal state
         self._in_compaction_mode = False
         self._initial_messages: List[ChatMessage] = []
-        self._last_compaction_msg_count = 0
         self._retry_short_summary = False
 
     def _estimate_tokens(self, messages: List[ChatMessage]) -> int:
@@ -161,9 +147,7 @@ class DefaultCompactionHook:
         # ── Phase 0: Check if we should enter compaction mode ─────────
         if not self._in_compaction_mode:
             _tokens = self._estimate_tokens(messages)
-            if should_compact(_tokens, len(messages), self._context_window,
-                              self._settings,
-                              last_compaction_msg_count=self._last_compaction_msg_count):
+            if should_compact(_tokens, self._context_window, self._settings):
                 self._in_compaction_mode = True
                 logger.info(
                     f"[compaction] triggered (tokens={_tokens}, msgs={len(messages)})")
@@ -223,7 +207,6 @@ class DefaultCompactionHook:
         # Success — replace history with initial + summary
         self._in_compaction_mode = False
         self._retry_short_summary = False
-        self._last_compaction_msg_count = len(self._initial_messages) + 1
 
         summary_msg = ChatMessage(role="user", content=(
             f"[COMPACTED HISTORY]\n{_summary}\n\n"
