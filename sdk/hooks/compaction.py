@@ -2,7 +2,9 @@
 
 Pure functions (estimate_tokens, clamp_max_tokens, should_compact) are used by
 agent.py for context management.  CompactionHook plugs into the agent loop
-via transform_context + should_continue_after_text.
+via ``transform_context`` only — when tokens exceed the threshold it fires a
+**separate LLM call** (not through the agent loop) to generate the summary,
+then returns compacted messages.  This mirrors pi's _checkCompaction pattern.
 """
 from __future__ import annotations
 
@@ -66,15 +68,15 @@ def should_compact(context_tokens: int, context_window: int,
 
 # ── Default compaction instruction ───────────────────────────────────
 
-_DEFAULT_COMPACT_INSTRUCTION = """\
-[CONTEXT WINDOW ALERT] Your context is approaching the limit.
+_COMPACT_SYSTEM_PROMPT = "You are a helpful assistant that summarizes conversations."
 
-Please provide a concise summary of the session's progress so far:
+_COMPACT_USER_PROMPT = """\
+Summarize the conversation above into a concise summary. Include:
 - What task(s) you are working on
 - Key decisions made and actions taken
 - Current status and next steps
 
-After this, your conversation history will be replaced with just your summary."""
+Return ONLY valid JSON with this shape: {"summary": "<your summary here>"}"""
 
 
 def _compact_response_format() -> ResponseFormat:
@@ -106,14 +108,15 @@ def _compact_response_format() -> ResponseFormat:
 class CompactionHook:
     """Compaction hook — compresses conversation history when context window is full.
 
-    Uses only generic hooks (transform_context + should_continue_after_text).
-    The loop has zero knowledge of compaction.
+    Uses only ``transform_context``.  When tokens exceed the threshold it fires a
+    **separate LLM call** (via ctx.client) to generate the summary, then returns
+    compacted messages directly.  No agent-loop round-trip needed — mirrors pi's
+    _checkCompaction pattern.
 
     Lifecycle:
-    1. transform_context detects tokens approaching limit → injects summary instruction
-    2. Loop calls LLM → gets text response (summary JSON)
-    3. should_continue_after_text intercepts the text response, parses summary,
-       replaces history with [system message] + [summary], returns new msgs to continue
+    1. transform_context detects tokens approaching limit
+    2. Fires a direct LLM call (ctx.client.chat) with compaction prompt + schema
+    3. Parses summary, returns [system_msg, compacted_user_msg] to replace history
     """
 
     def __init__(self, settings: Any = None, context_window: int = 256_000):
@@ -121,9 +124,7 @@ class CompactionHook:
         self._context_window = context_window
 
         # Internal state
-        self._in_compaction_mode = False
         self._system_message: Optional[ChatMessage] = None
-        self._retry_short_summary = False
 
     def _estimate_tokens(self, messages: List[ChatMessage]) -> int:
         total = 0
@@ -135,7 +136,7 @@ class CompactionHook:
                 total += estimate_tokens(fn.get("arguments", "") or "")
         return total
 
-    # ── transform_context: trigger + inject instruction / keep schema ──
+    # ── transform_context: detect + execute compaction inline ────────
 
     def transform_context(self, messages: List[ChatMessage],
                           response_format: Optional[ResponseFormat],
@@ -144,74 +145,61 @@ class CompactionHook:
         if self._system_message is None:
             self._system_message = messages[0]
 
-        # ── Phase 0: Check if we should enter compaction mode ─────────
-        if not self._in_compaction_mode:
-            _tokens = self._estimate_tokens(messages)
-            if should_compact(_tokens, self._context_window, self._settings):
-                self._in_compaction_mode = True
-                logger.info(
-                    f"[compaction] triggered (tokens={_tokens}, msgs={len(messages)})")
-
-        if not self._in_compaction_mode:
+        _tokens = self._estimate_tokens(messages)
+        if not should_compact(_tokens, self._context_window, self._settings):
             return None
 
-        # ── Phase 1: Retry short summary ───────────────────────────────
-        if self._retry_short_summary:
-            new_msgs = list(messages) + [ChatMessage(
-                role="user",
-                content="Your summary is too short. Please provide a meaningful "
-                        "summary of the session's progress and call result again.")
-            ]
-            rf = _compact_response_format()
-            return TransformContextResult(messages=new_msgs, response_format=rf)
+        logger.info(
+            f"[compaction] triggered (tokens={_tokens}, msgs={len(messages)})")
 
-        # ── Phase 2: Inject compaction instruction (first time) ────────
-        has_instruction = (
-            messages and messages[-1].role == "user"
-            and "[CONTEXT WINDOW ALERT]" in (messages[-1].content or "")
-        )
-
-        if not has_instruction:
-            new_msgs = list(messages) + [ChatMessage(role="user", content=_DEFAULT_COMPACT_INSTRUCTION)]
-            rf = _compact_response_format()
-            return TransformContextResult(messages=new_msgs, response_format=rf)
-
-        # ── Phase 3: Keep compaction schema active for next LLM call ───
-        rf = _compact_response_format()
-        return TransformContextResult(response_format=rf)
-
-    # ── should_continue_after_text: parse summary and replace history ──
-
-    def should_continue_after_text(self, content: str, messages: List[ChatMessage],
-                                   ctx: HookContext) -> Optional[List[ChatMessage]]:
-        """Called by loop when LLM returns text (no tool calls).
-
-        Return a new message list to continue looping with, or None to exit normally.
-        """
-        if not self._in_compaction_mode:
+        # No client available — cannot compact, fall through
+        client = ctx.client
+        if client is None:
+            logger.warning("[compaction] no client in HookContext, skipping")
             return None
+
+        # Build compaction messages: system + all history + instruction
+        compact_msgs: List[ChatMessage] = [
+            ChatMessage(role="system", content=_COMPACT_SYSTEM_PROMPT),
+            *messages,
+            ChatMessage(role="user", content=_COMPACT_USER_PROMPT),
+        ]
+
+        # Fire separate LLM call for summary (not through agent loop)
+        try:
+            resp = client.chat(
+                compact_msgs,
+                temperature=0.3,
+                max_tokens=2048,
+                response_format=_compact_response_format(),
+            )
+        except Exception as exc:
+            logger.error(f"[compaction] LLM call failed: {exc}")
+            return None
+
+        if not resp.choices:
+            logger.warning("[compaction] empty compaction response")
+            return None
+
+        raw_content = resp.choices[0].message.content or ""
 
         # Parse summary from JSON response
-        _summary = content
+        _summary = raw_content.strip()
         try:
-            _parsed = json.loads(content)
-            _summary = _parsed.get("summary", content)
+            _parsed = json.loads(_summary)
+            _summary = _parsed.get("summary", _summary)
         except (json.JSONDecodeError, TypeError):
             pass
 
         if not _summary or len(_summary.strip()) < 20:
-            self._retry_short_summary = True
-            logger.info("[compaction] summary too short, retrying")
-            return list(messages)
+            logger.info("[compaction] summary too short, skipping")
+            return None
 
-        # Success — replace history with initial + summary
-        self._in_compaction_mode = False
-        self._retry_short_summary = False
-
+        # Success — replace history with system + compacted summary
         summary_msg = ChatMessage(role="user", content=(
             f"[COMPACTED HISTORY]\n{_summary}\n\n"
             f"Continue working from where you left off."
         ))
         new_msgs = [self._system_message, summary_msg]
         logger.info(f"[compaction] done, summary={len(_summary)} chars, msgs now={len(new_msgs)}")
-        return new_msgs
+        return TransformContextResult(messages=new_msgs)

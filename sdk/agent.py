@@ -121,7 +121,8 @@ def run_agent(client: ChatClient, messages: list[ChatMessage],
     _iteration = 0
     while True:
         _iteration += 1
-        ctx = HookContext(messages=msgs, tools=tools or [], iteration=_iteration)
+        ctx = HookContext(messages=msgs, tools=tools or [], iteration=_iteration,
+                          client=client)
 
         # ── transform_context hook (before each LLM call) ────────────
         # Hooks can modify messages (e.g. inject compaction instruction,
@@ -135,7 +136,8 @@ def run_agent(client: ChatClient, messages: list[ChatMessage],
                 _active_rf = tcr.response_format
 
         # Refresh ctx after transform (msgs may have changed)
-        ctx = HookContext(messages=msgs, tools=tools or [], iteration=_iteration)
+        ctx = HookContext(messages=msgs, tools=tools or [], iteration=_iteration,
+                          client=client)
 
         _context_tokens = estimate_context_tokens(_msgs_to_dicts(msgs))
         _clamped_max = clamp_max_tokens(4096, _context_tokens, _context_window)

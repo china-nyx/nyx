@@ -53,6 +53,7 @@ class HookContext:
     messages: List[ChatMessage]         # current message history
     tools: List[Dict]                   # active tool definitions
     iteration: int                      # current loop iteration
+    client: Optional[Any] = None        # ChatClient for hook-side LLM calls (e.g. compaction)
 
 
 # ── Hook Protocol (all methods optional — missing = no-op) ────────────
