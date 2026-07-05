@@ -1,7 +1,7 @@
 """Hook implementations — one per file.
 
 Import from app.hooks:
-    from app.hooks import RepetitiveCallGuard, DuplicateOutputPruner, ...
+    from app.hooks import RepetitiveCallGuard, StepLogger, ...
 """
 from .repetitive_guard import RepetitiveCallGuard
 from .step_logger import StepLogger
