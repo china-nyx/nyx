@@ -8,12 +8,26 @@ related_skills: toolbox
 
 Manage long-running tasks and recurring workflows under `projects/`. Every project gets a directory and an entry in `projects/INDEX.md`.
 
+## Initializing projects/
+
+Before creating any project, ensure the infrastructure exists:
+
+1. If `projects/` does not exist, create it
+2. If `projects/INDEX.md` does not exist, create it with the template below
+
+```
+# Projects Index
+
+| Project | Status | Description | Created |
+|---------|--------|-------------|--------|
+```
+
 ## Creating a Project
 
 1. Read `projects/INDEX.md` to check for duplicates
-2. Create a directory with whatever subdirectories the project needs (e.g., scripts, data, temp)
-3. Document the project's purpose and file layout
-4. Add the project to `projects/INDEX.md`
+2. Create a directory under `projects/<name>/` with whatever subdirectories the project needs (e.g., scripts, data)
+3. Write a `README.md` inside the project directory documenting its purpose and file layout
+4. Add a row to `projects/INDEX.md`
 
 Use clear, lowercase-hyphenated names.
 
