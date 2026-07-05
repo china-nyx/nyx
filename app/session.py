@@ -157,7 +157,6 @@ def run_session(llm, executor, *,
     from sdk.agent_hooks import CompositeHooks
     from app.hooks import (
         CompactionHook,
-        DuplicateOutputPruner,
         TaskReflectHook,
         RepetitiveCallGuard,
         StepLogger,
@@ -168,7 +167,6 @@ def run_session(llm, executor, *,
         _reflect_hook = TaskReflectHook(reflect_prompt)
     _hook_list = [
         RepetitiveCallGuard(),
-        DuplicateOutputPruner(),
         StepLogger(_on_step),
         ToolCallValidator(),
         CompactionHook(config.compaction_settings, context_window=config.context_window),
