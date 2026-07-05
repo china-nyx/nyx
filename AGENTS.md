@@ -11,7 +11,7 @@ Source code, comments, commit messages, and SKILL.md files must be written in **
 - **4 base tools only**: `bash`, `read`, `write`, `edit`. Everything else is a skill.
 - **Code changes via executor**: agent sessions run through `executor.run()` which detects repo HEAD changes → commit + `os.execv` restart.
 - **Skills over tools**: New capabilities go in `skills/<name>/` as SKILL.md + scripts, NOT as new `_t_*` methods in `sdk/tools.py`.
-- **Skill pattern**: Each skill is a directory with `SKILL.md` (frontmatter: name, description) and optional `scripts/` subdirectory. The LLM reads the SKILL.md via `read`, then executes steps using `bash` to call scripts.
+- **Skill pattern**: Each skill is a directory with `SKILL.md` (frontmatter: name, description). The LLM reads the SKILL.md via `read`, then follows its instructions using the base tools. Skills should describe what to do, not provide copy-paste commands.
 - **All code is modifiable**: solver can modify repo source directly — executor detects changes and commits + restarts.
 - **Hotfixer is the stable core**: `app/hotfixer.py` only depends on `app/config.py` + `sdk/`. Boot invokes it directly when anything fails.
 
