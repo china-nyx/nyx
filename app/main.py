@@ -56,6 +56,23 @@ class Agent:
         from app import self_reflect
         self_reflect.maybe_drop()
 
+    # ── Post-task reflection ────────────────────────────────────────
+
+    def _maybe_post_task_reflect(self, tid: str, requirement: str):
+        """Drop a lightweight post-task reflection inbox file after task completion."""
+        skill_file = config.skills_dir / "post-task-reflect" / "SKILL.md"
+        if not skill_file.exists():
+            skill_file = config.repo / "skills" / "post-task-reflect" / "SKILL.md"
+        if not skill_file.exists():
+            return
+
+        requirement_text = skill_file.read_text(encoding="utf-8")
+        inbox_file = config.inbox_dir / f"50-post-task-reflect-{tid}.md"
+        # Append the completed task's requirement so the reflector knows what was done
+        full_req = f"{requirement_text}\n\n## Completed Task\n{requirement}"
+        inbox_file.write_text(full_req, encoding="utf-8")
+        logger.info(f"[{tid}] dropped post-task reflection: {inbox_file.name}")
+
     # ── Tick loop ───────────────────────────────────────
 
     def tick(self):
@@ -119,6 +136,10 @@ class Agent:
 
         # No code change — mark done here
         scheduler.mark_done(tid, result)
+
+        # Trigger post-task reflection (lightweight: memory + skill evaluation)
+        self._maybe_post_task_reflect(tid, requirement)
+
         return "solved"
 
 
