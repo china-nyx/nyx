@@ -39,7 +39,6 @@ sdk/        — agent.py (loop), agent_hooks.py (protocol + composition),
               llm.py, tools.py, fs.py, git.py, skills.py, schemas.py
 skills/     — built-in skills (loaded at runtime from source repo)
 deploy/     — systemd unit template
-tests/      — test suite
 ```
 
 ### Runtime State (cwd)
