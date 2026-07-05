@@ -8,6 +8,7 @@ from .duplicate_pruner import DuplicateOutputPruner
 from .step_logger import StepLogger
 from .compaction import CompactionHook
 from .post_task_reflect import PostTaskReflectHook
+from .tool_call_validator import ToolCallValidator
 
 __all__ = [
     "RepetitiveCallGuard",
@@ -15,4 +16,5 @@ __all__ = [
     "StepLogger",
     "CompactionHook",
     "PostTaskReflectHook",
+    "ToolCallValidator",
 ]

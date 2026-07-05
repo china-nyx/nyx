@@ -120,31 +120,25 @@ def run_agent(llm, messages: list[ChatMessage],
                 content=_task_content if _task_content is not None else content,
             )
 
-        # ── Tool calls → validate + execute with hooks ────────────────
-        # Filter out tool calls with malformed JSON arguments before appending
-        # the assistant message.  If ALL are invalid, discard the entire turn
-        # and let the LLM retry.
-        _valid_calls: List = []
-        _invalid_names: List[str] = []
-        for tc in tool_calls:
-            if tc.parse_arguments() is not None:
-                _valid_calls.append(tc)
-            else:
-                _invalid_names.append(tc.function.name)
-                logger.warning(
-                    f"[agent] dropping malformed tool call "{tc.function.name}": "
-                    f"{tc.function.arguments[:120]}…")
-
-        if not _valid_calls:
-            logger.warning(
-                f"[agent] all tool calls invalid ({_invalid_names}), retrying")
-            continue
+        # ── after_llm_call hook (filter/modify tool calls) ───────────
+        from sdk.agent_hooks import AfterLlmCallResult
+        _r = hooks.after_llm_call(message, tool_calls, ctx)
+        if isinstance(_r, AfterLlmCallResult):
+            if _r.tool_calls is None:
+                # hook signals to skip this turn entirely
+                continue
+            tool_calls = _r.tool_calls
+            if not tool_calls:
+                logger.warning("[agent] all tool calls filtered by hook, retrying")
+                continue
+            if _r.messages_to_append:
+                msgs.extend(_r.messages_to_append)
 
         msgs.append(ChatMessage(role=message.role, content=message.content,
-                                 tool_calls=[tc.model_dump() for tc in _valid_calls]))
+                                 tool_calls=[tc.model_dump() for tc in tool_calls]))
 
         _terminate_batch = False
-        for tc in _valid_calls:
+        for tc in tool_calls:
             fn = tc.function
             name = fn.name
             try:

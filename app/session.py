@@ -161,6 +161,7 @@ def run_session(llm, executor, *,
         PostTaskReflectHook,
         RepetitiveCallGuard,
         StepLogger,
+        ToolCallValidator,
     )
     _reflect_hook: Optional[PostTaskReflectHook] = None
     if reflect_prompt is not None:
@@ -169,6 +170,7 @@ def run_session(llm, executor, *,
         RepetitiveCallGuard(),
         DuplicateOutputPruner(),
         StepLogger(_on_step),
+        ToolCallValidator(),
         CompactionHook(config.compaction_settings, context_window=config.context_window),
         _reflect_hook,
     ]
