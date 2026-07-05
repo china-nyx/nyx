@@ -33,7 +33,7 @@ crash ─▶ boot/main catches exception ─▶ self-heal → executor.run(hotfi
 ```
 app/        — boot, config, executor, hotfixer, log, main, prompts,
               scheduler, self_heal, daily_reflect, session, solver
-              hooks/ — compaction, duplicate_pruner, task_reflect,
+              hooks/ — compaction, task_reflect,
                       repetitive_guard, step_logger, tool_call_validator
 sdk/        — agent.py (loop), agent_hooks.py (protocol + composition),
               llm.py, tools.py, fs.py, git.py, skills.py, schemas.py
