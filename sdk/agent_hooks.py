@@ -78,10 +78,7 @@ class AgentHooks(Protocol):
                           response_format: Optional[ResponseFormat],
                           ctx: HookContext) -> Optional[TransformContextResult]: ...
 
-    # ── Text response intercept (before loop exits on text) ──────────
-    def should_continue_after_text(self, content: str,
-                                   messages: List[ChatMessage],
-                                   ctx: HookContext) -> Optional[List[ChatMessage]]: ...
+
 
     # ── Observer (read-only) ─────────────────────────────────────────
     def on_event(self, event_type: str, data: Dict[str, Any]): ...
@@ -149,17 +146,6 @@ class CompositeHooks:
                     cur_rf = r.response_format
         if cur_msgs is not messages or cur_rf is not response_format:
             return TransformContextResult(messages=cur_msgs, response_format=cur_rf)
-        return None
-
-    # ── Text response intercept (first non-None wins) ────────────────
-
-    def should_continue_after_text(self, content: str,
-                                   messages: List[ChatMessage],
-                                   ctx: HookContext) -> Optional[List[ChatMessage]]:
-        for h in self._hooks:
-            r = getattr(h, 'should_continue_after_text', lambda *a: None)(content, messages, ctx)
-            if r is not None:
-                return r
         return None
 
     # ── Observer ─────────────────────────────────────────────────────

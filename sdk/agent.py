@@ -161,16 +161,9 @@ def run_agent(client: ChatClient, messages: list[ChatMessage],
         message = resp.choices[0].message
         tcs = message.tool_calls or []
 
-        # ── No tool calls → exit (or continue via hook) ───────────────
+        # ── No tool calls → exit ─────────────────────────────────────
         if not tcs:
             content = _strip_think(message.content or "")
-
-            # Generic hook: allow hooks to intercept text response and continue
-            new_msgs = hooks.should_continue_after_text(content, msgs, ctx)
-            if new_msgs is not None:
-                msgs = new_msgs
-                continue
-
             stop_reason = resp.choices[0].finish_reason
             _emit("turn_end", {"content": content})
             return {

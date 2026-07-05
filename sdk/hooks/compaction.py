@@ -6,9 +6,9 @@ via ``transform_context`` only — when tokens exceed the threshold it fires a
 **separate LLM call** (not through the agent loop) to generate the summary,
 then returns compacted messages.
 
-Strategy: keep the most recent K messages intact (recent work context),
-serialize older messages into text, send that text in a single user prompt
-to the compaction LLM call.  The result replaces only the old portion.
+All messages are serialized into text for summarization — the model sees
+the full conversation and produces a concise summary.  The result replaces
+the entire history with [system] + [summary].
 """
 from __future__ import annotations
 
@@ -124,13 +124,10 @@ class CompactionHook:
     **separate LLM call** (via ctx.client) to generate the summary, then returns
     compacted messages directly.
 
-    Strategy: keep recent K messages intact, serialize older ones into text,
-    send that text in a single user prompt for summarization.  The summary
-    replaces only the old portion — recent context is preserved.
+    All messages are serialized into text and sent in a single user prompt —
+    no JSON schema, no tail-keeping.  The model sees everything and produces
+    a plain-text summary that replaces the full history.
     """
-
-    # Number of recent messages to keep untouched (recent work context)
-    _KEEP_TAIL_TOKENS = 8192  # keep ~8K tokens of recent messages
 
     def __init__(self, settings: Any = None, context_window: int = 256_000):
         self._settings = settings or CompactionSettings()
@@ -164,14 +161,8 @@ class CompactionHook:
             logger.warning("[compaction] no client in HookContext, skipping")
             return None
 
-        # Split messages into [old to summarize] + [recent to keep]
-        # Keep the tail that fits within _KEEP_TAIL_TOKENS
-        old_msgs, recent_msgs = self._split_messages(messages)
-        if not old_msgs:
-            logger.info("[compaction] nothing to compress")
-            return None
-
-        conversation_text = _serialize_messages(old_msgs)
+        # Serialize all messages (skip system prompt at index 0)
+        conversation_text = _serialize_messages(messages[1:])
 
         # Build a small compaction request (system + one user message)
         compact_prompt = _COMPACT_USER_TEMPLATE.format(
@@ -210,39 +201,11 @@ class CompactionHook:
             logger.info("[compaction] summary too short, skipping")
             return None
 
-        # Build new message list: system + summary + recent tail
+        # Replace entire history with system + summary
         summary_msg = ChatMessage(role="user", content=(
             f"[COMPACTED HISTORY]\n{_summary}\n\n"
             f"Continue working from where you left off."
         ))
-        new_msgs = [self._system_message, summary_msg] + recent_msgs
-        logger.info(
-            f"[compaction] done, summary={len(_summary)} chars, "
-            f"msgs now={len(new_msgs)} (kept {len(recent_msgs)} recent)")
+        new_msgs = [self._system_message, summary_msg]
+        logger.info(f"[compaction] done, summary={len(_summary)} chars, msgs now={len(new_msgs)}")
         return TransformContextResult(messages=new_msgs)
-
-    def _split_messages(self, messages: List[ChatMessage]):
-        """Split into (old_to_summarize, recent_to_keep).
-
-        Skip the system message (index 0).  Keep a tail of messages whose
-        combined token count fits within _KEEP_TAIL_TOKENS.
-        """
-        if len(messages) <= 2:
-            return [], list(messages)
-
-        # messages[0] is system, start from index 1
-        content_msgs = messages[1:]
-
-        # Walk from the end, accumulating tokens until we hit the keep limit
-        tail_start = len(content_msgs)
-        tail_tokens = 0
-        for i in range(len(content_msgs) - 1, -1, -1):
-            mt = _estimate_msg_tokens(content_msgs[i])
-            if tail_tokens + mt > self._KEEP_TAIL_TOKENS:
-                break
-            tail_start = i
-            tail_tokens += mt
-
-        old = content_msgs[:tail_start]
-        recent = content_msgs[tail_start:]
-        return old, recent
