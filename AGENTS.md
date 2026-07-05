@@ -2,6 +2,14 @@
 
 This document is for **developers** working on NYX itself. For user-facing documentation (what NYX does, how to run it, configuration), see [README.md](README.md).
 
+## Language
+
+All requirement files (`.md` in mailbox/task), source code, comments, commit messages, and SKILL.md files must be written in **English**.
+
+## Language
+
+All requirement files (`.md` in mailbox/task), source code, comments, commit messages, and SKILL.md files must be written in **English**.
+
 ## Architecture Principles
 
 - **4 base tools only**: `bash`, `read`, `write`, `edit`. Everything else is a skill.
