@@ -1,6 +1,7 @@
 ---
 name: daily-reflect
 description: NYX's periodic self-introspection cycle. Audits the entire workspace and drives continuous improvement. Every cycle should leave things in a slightly better state.
+related_skills: memory, project, toolbox, task-reflect
 ---
 
 # Daily Reflection Skill

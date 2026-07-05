@@ -1,6 +1,7 @@
 ---
 name: memory
 description: Manage NYX's persistent memory files in memory/. Maintain INDEX.md as the entry point. Other files are created and organized by the agent as needed.
+related_skills: daily-reflect, task-reflect
 ---
 
 # Memory Skill
