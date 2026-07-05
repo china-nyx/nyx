@@ -79,8 +79,8 @@ class AgentHooks(Protocol):
     def before_tool_calls(self, message: 'ChatResponseMessage',
                           tool_calls: List,
                           ctx: HookContext) -> Optional[BeforeToolCallsResult]: ...
-    def on_turn_complete(self, message: 'ChatResponseMessage',
-                          ctx: HookContext) -> Optional[TurnCompleteResult]: ...
+    def before_turn_end(self, message: 'ChatResponseMessage',
+                          ctx: HookContext) -> Optional[BeforeTurnEndResult]: ...
 
     # ── Tool call hooks ──────────────────────────────────────────────
     def before_tool_call(self, name: str, args: Dict[str, Any],
@@ -125,19 +125,19 @@ class CompositeHooks:
             return BeforeToolCallsResult(tool_calls=filtered_tc)
         return None
 
-    def on_turn_complete(self, message: 'ChatResponseMessage',
-                          ctx: HookContext) -> Optional[TurnCompleteResult]:
+    def before_turn_end(self, message: 'ChatResponseMessage',
+                          ctx: HookContext) -> Optional[BeforeTurnEndResult]:
         continue_loop = False
         append_msgs: List[ChatMessage] = []
         for h in self._hooks:
-            r = getattr(h, 'on_turn_complete', lambda *a: None)(message, ctx)
-            if isinstance(r, TurnCompleteResult):
+            r = getattr(h, 'before_turn_end', lambda *a: None)(message, ctx)
+            if isinstance(r, BeforeTurnEndResult):
                 if r.continue_loop:
                     continue_loop = True
                 if r.messages_to_append:
                     append_msgs.extend(r.messages_to_append)
         if continue_loop or append_msgs:
-            return TurnCompleteResult(
+            return BeforeTurnEndResult(
                 continue_loop=continue_loop,
                 messages_to_append=append_msgs or None,
             )

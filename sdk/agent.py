@@ -105,8 +105,8 @@ def run_agent(llm, messages: list[ChatMessage],
         if not tool_calls:
             content = message.content or ""
 
-            # on_turn_complete hook (before exit — like pi's getFollowUpMessages)
-            r = hooks.on_turn_complete(message, ctx)
+            # before_turn_end hook (before exit — like pi's getFollowUpMessages)
+            r = hooks.before_turn_end(message, ctx)
             if r and r.continue_loop:
                 _task_content = content  # save task result before continuing
                 msgs.append(ChatMessage(role=message.role, content=message.content))
