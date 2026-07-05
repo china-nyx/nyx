@@ -5,7 +5,8 @@ LLM API requests and responses, using Pydantic for validation and documentation.
 """
 from __future__ import annotations
 
-from typing import Any, Optional
+import json
+from typing import Any, Dict, Optional
 
 from pydantic import BaseModel, Field
 
@@ -63,6 +64,19 @@ class ToolCall(BaseModel):
     id: str
     type: str = "function"
     function: ToolCallFunction
+
+    def parse_arguments(self) -> Optional[Dict[str, Any]]:
+        """Parse the ``arguments`` JSON string into a dict.
+
+        Returns ``None`` when the arguments field is not valid JSON,
+        so callers can detect malformed tool calls early (e.g. before
+        sending them back to an LLM server that would reject the request).
+        """
+        raw = self.function.arguments or "{}"
+        try:
+            return json.loads(raw)
+        except (json.JSONDecodeError, TypeError):
+            return None
 
 
 class ChatResponseMessage(BaseModel):

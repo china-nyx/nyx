@@ -127,15 +127,13 @@ def run_agent(llm, messages: list[ChatMessage],
         _valid_calls: List = []
         _invalid_names: List[str] = []
         for tc in tool_calls:
-            raw = tc.function.arguments or "{}"
-            try:
-                json.loads(raw)
+            if tc.parse_arguments() is not None:
                 _valid_calls.append(tc)
-            except (json.JSONDecodeError, TypeError):
+            else:
                 _invalid_names.append(tc.function.name)
                 logger.warning(
                     f"[agent] dropping malformed tool call "{tc.function.name}": "
-                    f"{raw[:120]}…")
+                    f"{tc.function.arguments[:120]}…")
 
         if not _valid_calls:
             logger.warning(
