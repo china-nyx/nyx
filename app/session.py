@@ -191,7 +191,6 @@ def run_session(llm, executor, *,
         tool_executor=executor, tools=tools,
         model=config.llm_model,
         temperature=temperature,
-        context_window=config.context_window,
         hooks=_hooks)
 
     task_output = (result.message.content or "").strip()

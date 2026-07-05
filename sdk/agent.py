@@ -28,9 +28,6 @@ logger = logging.getLogger(__name__)
 
 
 
-# Default context window when the caller doesn't supply one.
-_DEFAULT_CONTEXT_WINDOW = 256_000
-
 
 def run_agent(llm, messages: list[ChatMessage],
               tool_executor: Callable[[str, Dict], tuple], *,
@@ -38,7 +35,6 @@ def run_agent(llm, messages: list[ChatMessage],
               temperature: float = 0.5,
               tools: List[Dict] = None,
               response_format: Optional[ResponseFormat] = None,
-              context_window: int = _DEFAULT_CONTEXT_WINDOW,
               hooks: AgentHooks = None) -> AssistantMessage:
     """Tool-calling agent loop with pluggable hooks.
 
@@ -61,7 +57,6 @@ def run_agent(llm, messages: list[ChatMessage],
     _task_content: Optional[str] = None  # first text-only response (saved when hook continues)
     tools = tools or ALL_TOOLS
     _response_format = response_format
-    _context_window = context_window
     msgs = list(messages)
 
     if hooks is None:
