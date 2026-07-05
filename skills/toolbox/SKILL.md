@@ -1,113 +1,50 @@
 ---
 name: toolbox
-description: Manage NYX's shared tool library under toolbox/. Use when you need a reusable utility (API wrapper, helper script, patch) that serves multiple projects. Also use to audit the toolbox — removing stale entries and project-specific scripts that should live in their own project directory.
+description: Manage NYX's shared tool library under toolbox/. For reusable utilities (scripts, helpers, patches) that serve multiple projects. Audit the toolbox to remove stale entries and project-specific scripts.
 ---
 
 # Toolbox Skill
 
-This skill guides NYX through managing its shared tool library at `toolbox/`. The toolbox is for **generic, reusable utilities** — not project-specific scripts. If a tool only serves one project, it belongs in `projects/<project>/`.
-
-## Core Principle: Shared vs Owned
-
-| Goes in `toolbox/` | Goes in `projects/<project>/` |
-|---|---|
-| github_api.py (used by triage + other projects) | pi-study-trigger.sh (only pi-study uses it) |
-| General patch helpers | daily-pi-check.sh (only pi-study) |
-| Utility scripts multiple workflows call | state.json for a specific project |
+Manage the shared utility library at `toolbox/`. Only generic, multi-project tools belong here — project-specific scripts go in their own `projects/<project>/` directory.
 
 ## Directory Structure
 
 ```
 toolbox/
 ├── README.md              ← Index of all tools with descriptions
-├── scripts/               ← Generic shell utilities (multi-project use only)
+├── scripts/               ← Shell utilities (multi-project only)
 │   ├── <tool>.sh
-│   └── .<tool>.sh.desc    ← Purpose and usage for each tool
-├── helpers/               ← Python helper programs (CLI tools, API wrappers)
+│   └── .<tool>.sh.desc    ← Purpose and usage
+├── helpers/               ← Python helpers (CLI tools, API wrappers)
 │   ├── <tool>.py
-│   └── .<tool>.py.desc    ← Purpose and usage for each tool
-└── patches/               ← Applied patches kept as reference
+│   └── .<tool>.py.desc    ← Purpose and usage
+└── patches/               ← Applied patches as reference
     ├── <name>.patch
-    └── .<name>.patch.desc ← What it fixes, status (applied/stale)
+    └── .<name>.patch.desc ← What it fixes, status
 ```
 
-## Procedure
+Every tool file has a corresponding `.desc` file documenting its purpose and usage.
 
-### Step 1: Audit Current Toolbox State
+## Auditing the Toolbox
 
-```bash
-# List all tools and check their .desc files exist
-find toolbox/ -type f ! -name ".*.desc" | sort
-echo "=== README lists ==="
-grep -oP 'toolbox/\S+' toolbox/README.md 2>/dev/null | sort -u
+When reviewing the toolbox:
 
-# Check for missing .desc files
-for f in $(find toolbox/scripts/ toolbox/helpers/ toolbox/patches/ -type f ! -name ".*.desc" 2>/dev/null); do
-    dot_desc="$(dirname "$f")/.$(basename "$f").desc"
-    [ -f "$dot_desc" ] || echo "MISSING DESC: $f"
-done
-```
+1. **List all tools** — compare against `README.md` to find missing or orphaned entries
+2. **Check .desc files** — every tool needs one; flag any that are missing
+3. **Find project-specific scripts** — scripts referencing a particular project's directory should be moved to that project
+4. **Review patches** — remove patches whose fixes are already merged into the codebase
+5. **Verify cron consistency** — no cron entry should call toolbox scripts directly; cron triggers live in `projects/<project>/scripts/`
 
-### Step 2: Check for Project-Specific Scripts That Don't Belong Here
-
-Any script that references a specific project's directory should be moved to `projects/<project>/`:
-
-```bash
-# Find scripts that hardcode project-specific paths
-grep -rl 'pi-study\|github-triage' toolbox/scripts/ 2>/dev/null
-```
-
-If found, move them:
-```bash
-mv toolbox/scripts/pi-something.sh projects/pi-study/scripts/
-# Update any cron entries pointing to the old location
-```
-
-### Step 3: Check for Stale Patches and Tools
-
-```bash
-for p in toolbox/patches/*.patch; do
-    [ -f "$p" ] || continue
-    echo "=== $(basename $p) ==="
-    cat "$(dirname "$p")/.$(basename "$p").desc" 2>/dev/null || echo "(no desc)"
-done
-```
-
-Remove patches whose fixes are already in the codebase and no longer needed.
-
-### Step 4: Add New Tool (if creating one)
+## Adding a New Tool
 
 1. Place it in the correct subdirectory (`scripts/`, `helpers/`, or `patches/`)
-2. Create a `.desc` file alongside it:
-   ```markdown
-   # <tool-name>
-   **Purpose:** What it does and why it exists
-   **Usage:** How to call it (command examples)
-   **Config:** Any configuration needed (env vars, files)
-   ```
-3. Update `toolbox/README.md` with the new tool's location and usage
-
-### Step 5: Verify Cron Consistency
-
-```bash
-# No cron entry should point to toolbox for a project-specific script
-crontab -l 2>/dev/null | grep 'toolbox'
-```
-
-**Rule:** Cron entries should point to `projects/<project>/scripts/`, never to `toolbox/scripts/`. Toolbox scripts are called *by* other scripts, not directly by cron.
+2. Create a `.desc` file documenting purpose, usage, and configuration
+3. Update `toolbox/README.md`
 
 ## Rules
 
-- **Toolbox is shared infrastructure** — only put things here that serve multiple projects
-- **Every file gets a `.desc`** — no orphaned tools without documentation
-- **README.md must stay current** — it's the entry point for discovering toolbox capabilities
-- **Project-specific scripts go to `projects/<project>/`** — use the `project` skill for that
-- **Cron never calls toolbox directly** — cron triggers live in project-owned directories
-
-## When to Use This Skill
-
-- Adding a new reusable utility (API wrapper, helper, automation)
-- Daily reflection finds toolbox drift (stale tools, missing .desc files, README out of date)
-- Discovering project-specific scripts that leaked into toolbox
-- Cleaning up stale patches or unused helpers
-- Auditing cron entries that reference toolbox paths
+- Toolbox is shared infrastructure — only multi-project tools
+- Every file gets a `.desc`
+- `README.md` must stay current
+- Project-specific scripts go to their project directory
+- Cron never calls toolbox directly
