@@ -80,10 +80,10 @@ def _serialize_messages(messages: List[ChatMessage]) -> str:
 
 def _estimate_msg_tokens(m: ChatMessage) -> int:
     """Estimate tokens for a single message."""
-    total = estimate_tokens(m.content or "")
+    total = _estimate_tokens(m.content or "")
     for tc in (m.tool_calls or []):
         fn = tc.get("function", {}) if isinstance(tc, dict) else {}
-        total += estimate_tokens(fn.get("arguments", "") or "")
+        total += _estimate_tokens(fn.get("arguments", "") or "")
     return total
 
 
