@@ -25,8 +25,8 @@ class BeforeToolCallResult:
 
 
 @dataclass(frozen=True)
-class TurnCompleteResult:
-    """Return from on_turn_complete to control exit behavior.
+class BeforeTurnEndResult:
+    """Return from before_turn_end to control exit behavior.
 
     Omitted fields (None) keep their original values.
     """
