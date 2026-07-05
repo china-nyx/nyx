@@ -22,6 +22,8 @@ Go through each area below. For each: **look at the actual state**, compare it t
 - Check that module docstrings and comments are present and accurate
 - Look for dead code or unused imports
 - Verify recent commits make sense in context of open issues
+- **Clean stale `__pycache__`**: remove old Python version caches (e.g. `.cpython-39.pyc` on a 3.12 system) and caches for deleted modules
+- **Check git push status**: `git status` — if ahead of origin, push commits so they survive crashes
 
 ### 2. Documentation (README.md, AGENTS.md)
 
