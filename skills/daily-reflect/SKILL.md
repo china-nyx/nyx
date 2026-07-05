@@ -46,6 +46,7 @@ Go through each area below. For each: **look at the actual state**, compare it t
 ### 5. Tasks (task/)
 
 - Review active tasks: are any stuck or looping without progress?
+- **Check for duplicate tasks**: same requirement type running simultaneously (e.g. two daily-reflection tasks). Remove duplicates and update `active` + `index.md`.
 - Is task/index.md getting too large? Prune very old completed entries if needed.
 - Check if any tasks need priority adjustment
 
