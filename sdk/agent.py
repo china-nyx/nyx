@@ -156,10 +156,10 @@ def run_agent(llm, messages: list[ChatMessage],
             break
 
         message = resp.choices[0].message
-        tcs = message.tool_calls or []
+        tool_calls = message.tool_calls or []
 
         # ── No tool calls → exit ─────────────────────────────────────
-        if not tcs:
+        if not tool_calls:
             content = _strip_think(message.content or "")
             stop_reason = resp.choices[0].finish_reason
             _emit("turn_end", {"content": content})
@@ -167,10 +167,10 @@ def run_agent(llm, messages: list[ChatMessage],
 
         # ── Tool calls → execute with hooks ───────────────────────────
         msgs.append(ChatMessage(role=message.role, content=message.content,
-                                 tool_calls=[tc.model_dump() for tc in tcs] if tcs else None))
+                                 tool_calls=[tc.model_dump() for tc in tool_calls] if tool_calls else None))
 
         _terminate_batch = False
-        for tc in tcs:
+        for tc in tool_calls:
             fn = tc.function
             name = fn.name
             try:
