@@ -10,7 +10,7 @@ This skill guides NYX through maintaining its persistent memory files in `memory
 
 ## Core Principle
 
-Memory is NYX's persistent state across restarts. The **only required file** is `INDEX.md` — it must always exist and list every other file with a one-line description. Everything else is created by the agent organically as needed (goals, notes, research summaries, etc.).
+Memory is NYX's persistent state across restarts. The **only required file** is `INDEX.md` — it must always exist and list every other file with a one-line description. Everything else is created by the agent organically as needed.
 
 ## INDEX.md
 

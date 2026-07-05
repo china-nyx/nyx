@@ -10,7 +10,7 @@ This is NYX's mechanism for **continuous self-improvement**. Unlike task-solving
 
 ## Before You Start
 
-Read `memory/INDEX.md` to understand what memory files exist, then read the ones that seem relevant (e.g., identity, goals). These tell you who you are and what's on your plate.
+Read `memory/INDEX.md` to understand what memory files exist, then read the ones that seem relevant. This gives context on current priorities and state.
 
 ## Audit Checklist
 
@@ -40,7 +40,7 @@ Go through each area below. For each: **look at the actual state**, compare it t
 
 - Read all memory files and check for drift between what they say and reality
 - Is INDEX.md accurate with current file list, descriptions, and sizes?
-- Prune old content: compress large journal entries, move resolved issues to archive, move completed goals to archive
+- Prune old content: compress verbose entries, archive resolved items, remove files no longer useful
 - Remove files that are no longer useful
 
 ### 5. Tasks (task/)
@@ -67,7 +67,7 @@ Go through each area below. For each: **look at the actual state**, compare it t
 
 ### Update Memory
 
-Write a journal entry summarizing: what you found, decisions made, actions taken, and next priorities.
+Record findings in memory: what was discovered, decisions made, actions taken, and next priorities.
 
 ### Take Action
 
@@ -76,7 +76,7 @@ For actionable problems discovered during the audit: **create inbox tasks** in `
 - Critical bugs or broken code → high priority (90+)
 - Code quality or documentation drift → medium priority (70-80)
 - Skill improvements or capability gaps → normal priority (60-70)
-- Informational observations only → log in journal, no task needed
+- Informational observations only → record in memory, no task needed
 
 ### Return a Summary
 
