@@ -4,7 +4,7 @@ This document is for **developers** working on NYX itself. For user-facing docum
 
 ## Language
 
-All requirement files (`.md` in mailbox/inbox), source code, comments, commit messages, and SKILL.md files must be written in **English**.
+Source code, comments, commit messages, and SKILL.md files must be written in **English**. Requirement files placed in the runtime `mailbox/inbox/` directory are also English-only.
 
 ## Architecture Principles
 
