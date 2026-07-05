@@ -6,7 +6,6 @@ are constructed here.
 """
 import json
 import logging
-import re
 from typing import Callable, Dict, List, Optional
 
 from sdk.agent_hooks import (
@@ -25,36 +24,6 @@ from sdk.schemas import (
 from sdk.tools import ALL_TOOLS
 
 logger = logging.getLogger(__name__)
-
-
-def _strip_think(text: str) -> str:
-    """Strip thinking tags and leaked XML fragments from LLM output."""
-    if not text:
-        return ""
-    text = re.sub(r" thinking.*? ", "", text, flags=re.DOTALL | re.IGNORECASE)
-    text = re.sub(
-        r"<[^>]*(?:think|anth|antth)[^>]*>.*?</[^>]*(?:think|anth|antth)[^>]*>",
-        "", text, flags=re.DOTALL | re.IGNORECASE,
-    )
-    m = re.match(r"^\s*<[^>]*(?:think|anth|antth)[^>]*>", text, flags=re.IGNORECASE)
-    if m:
-        rest = text[m.end():]
-        if not re.search(r"</[^>]*(?:think|anth|antth)[^>]*>", rest, re.IGNORECASE):
-            rest = re.sub(r"^.*?(?=\n\n|\Z)", "", rest, flags=re.DOTALL)
-        text = rest
-    text = re.sub(r"<function=[^>]*>.*?</function>", "", text, flags=re.DOTALL | re.IGNORECASE)
-    text = re.sub(
-        r"<(?:issue_description|reset|task|context)[^>]*>.*?</(?:issue_description|reset|task|context)",
-        "", text, flags=re.DOTALL | re.IGNORECASE,
-    )
-    m2 = re.match(
-        r"^\s*<(?:function=[^>]*|issue_description[^>]*|reset[^>]*|task[^>]*|context[^>]*|\|mask_start\|)",
-        text, flags=re.IGNORECASE,
-    )
-    if m2:
-        text = text[m2.end():]
-    text = re.sub(r"<\|mask_(?:start|end)\|>", "", text, flags=re.IGNORECASE)
-    return text.strip()
 
 
 # ── Tool output pruning ──────────────────────────────────────────────
@@ -160,8 +129,7 @@ def run_agent(llm, messages: list[ChatMessage],
 
         # ── No tool calls → exit ─────────────────────────────────────
         if not tool_calls:
-            content = _strip_think(message.content or "")
-            stop_reason = resp.choices[0].finish_reason
+            content = message.content or ""
             _emit("turn_end", {"content": content})
             return AssistantMessage(content=content)
 
