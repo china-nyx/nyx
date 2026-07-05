@@ -25,8 +25,7 @@ Source repo: {repo}
 Everything under {cwd} is your runtime workspace (read-write):
   - projects/ → long-running projects (each gets its own directory)
   - toolbox/ → shared utilities (multi-project tools only)
-  - temp/ → ALL temporary and scratch files go here. NEVER create loose files elsewhere in the workspace.
-    This directory is cleaned automatically on every restart.
+  - temp/ → ALL temporary and scratch files MUST go here. NEVER leave loose files anywhere else in the workspace.
   - memory/ → persistent knowledge (read INDEX.md for entry point; create/update files as needed)
   - skills/ → runtime skills (override built-in by name)
     Built-in skills are loaded from the source repo at runtime.
