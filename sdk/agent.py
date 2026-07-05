@@ -9,7 +9,6 @@ import logging
 from typing import Callable, Dict, List, Optional
 
 from sdk.agent_hooks import (
-    AfterLlmCallResult,
     AgentHooks,
     HookContext,
 )
