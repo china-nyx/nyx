@@ -1,14 +1,8 @@
-"""Compaction — token estimation, trigger detection, and hook implementation.
+"""Compaction hook — compresses conversation history when context window is full.
 
-Pure functions (estimate_tokens, clamp_max_tokens, should_compact) are used by
-agent.py for context management.  CompactionHook plugs into the agent loop
-via ``transform_context`` only — when tokens exceed the threshold it fires a
-**separate LLM call** (not through the agent loop) to generate the summary,
-then returns compacted messages.
-
-All messages are serialized into text for summarization — the model sees
-the full conversation and produces a concise summary.  The result replaces
-the entire history with [system] + [summary].
+Plugs into the agent loop via ``before_llm_call`` — when tokens exceed the
+threshold it fires a **separate LLM call** to generate a summary, then returns
+compacted messages.
 """
 from __future__ import annotations
 
@@ -17,7 +11,7 @@ import logging
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
-from sdk.agent_hooks import HookContext, TransformContextResult
+from sdk.agent_hooks import HookContext
 from sdk.schemas import ChatMessage
 
 logger = logging.getLogger(__name__)
@@ -33,33 +27,11 @@ class CompactionSettings:
     reserve_tokens: int = 16384       # trigger when remaining headroom < this many tokens
 
 
-# ── Token estimation (pure functions) ───────────────────────────────
+# ── Token estimation (private helpers) ──────────────────────────
 
-def estimate_tokens(text: str) -> int:
+def _estimate_tokens(text: str) -> int:
     """Estimate token count from text using chars/4 heuristic."""
     return max(1, len(text) // 4) if text else 0
-
-
-def estimate_context_tokens(messages: List[Dict]) -> int:
-    """Sum estimated tokens across all messages in the conversation."""
-    total = 0
-    for msg in messages:
-        content = msg.get("content", "") or ""
-        total += estimate_tokens(content)
-        for tc in msg.get("tool_calls") or []:
-            fn = tc.get("function", {})
-            total += estimate_tokens(fn.get("arguments", "") or "")
-    return total
-
-
-def clamp_max_tokens(requested: int, context_tokens: int, context_window: int) -> int:
-    """Clamp max_tokens so the total (context + output) stays within the window.
-
-    Leaves a 4096-token safety margin beyond the reserve to avoid OOM / truncation.
-    Returns at least 256 so we never request zero tokens.
-    """
-    headroom = context_window - context_tokens - 4096
-    return max(256, min(requested, headroom))
 
 
 def should_compact(context_tokens: int, context_window: int,
@@ -120,8 +92,8 @@ def _estimate_msg_tokens(m: ChatMessage) -> int:
 class CompactionHook:
     """Compaction hook — compresses conversation history when context window is full.
 
-    Uses only ``transform_context``.  When tokens exceed the threshold it fires a
-    **separate LLM call** (via ctx.client) to generate the summary, then returns
+    Uses ``before_llm_call``.  When tokens exceed the threshold it fires a
+    **separate LLM call** (via ctx.llm) to generate the summary, then returns
     compacted messages directly.
 
     All messages are serialized into text and sent in a single user prompt —
@@ -139,11 +111,10 @@ class CompactionHook:
     def _estimate_tokens(self, messages: List[ChatMessage]) -> int:
         return sum(_estimate_msg_tokens(m) for m in messages)
 
-    # ── transform_context: detect + execute compaction inline ────────
+    # ── before_llm_call: detect + execute compaction inline ──────────
 
-    def transform_context(self, messages: List[ChatMessage],
-                          response_format: Optional[Any],
-                          ctx: HookContext) -> Optional[TransformContextResult]:
+    def before_llm_call(self, messages: List[ChatMessage],
+                        ctx: HookContext) -> Optional[List[ChatMessage]]:
         # Capture system message on first call (messages[0] is the system prompt)
         if self._system_message is None:
             self._system_message = messages[0]
@@ -156,9 +127,9 @@ class CompactionHook:
             f"[compaction] triggered (tokens={_tokens}, msgs={len(messages)})")
 
         # No client available — cannot compact, fall through
-        client = ctx.client
-        if client is None:
-            logger.warning("[compaction] no client in HookContext, skipping")
+        _llm = ctx.llm
+        if _llm is None:
+            logger.warning("[compaction] no llm in HookContext, skipping")
             return None
 
         # Serialize all messages (skip system prompt at index 0)
@@ -174,9 +145,11 @@ class CompactionHook:
         ]
 
         # Fire separate LLM call for summary (not through agent loop)
+        from app.config import config as _config
         try:
-            resp = client.chat(
+            resp = _llm.chat(
                 compact_msgs,
+                model=_config.llm_model,
                 temperature=0.3,
                 max_tokens=min(4096, self._settings.reserve_tokens),
             )
@@ -208,4 +181,4 @@ class CompactionHook:
         ))
         new_msgs = [self._system_message, summary_msg]
         logger.info(f"[compaction] done, summary={len(_summary)} chars, msgs now={len(new_msgs)}")
-        return TransformContextResult(messages=new_msgs)
+        return new_msgs

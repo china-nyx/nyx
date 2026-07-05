@@ -1,29 +1,23 @@
 """Agent loop — tool-calling agent session.
 
-Thin orchestrator: calls hooks at key points.  Compaction is implemented
-entirely by hooks (sdk/hooks/compaction.py) using only the generic
-``transform_context`` hook — no compaction-specific code in this file.
+Thin orchestrator: calls hooks at key points.  The caller is responsible
+for building and passing an ``AgentHooks`` instance.  No default hooks
+are constructed here.
 """
 import json
 import logging
-import time
+import re
 from typing import Callable, Dict, List, Optional
 
 from sdk.agent_hooks import (
     AgentHooks,
-    CompositeHooks,
     HookContext,
 )
-from sdk.hooks.compaction import clamp_max_tokens, estimate_context_tokens
-from sdk.hooks import (  # noqa: F401
-    CompactionHook,
-    DuplicateOutputPruner,
-    RepetitiveCallGuard,
-    StepLogger,
-    TerminalToolHook,
-)
-from sdk.llm import _prune_tool_output, _strip_think
+
+# ── Imports from other sdk modules ───────────────────────────────
+
 from sdk.schemas import (
+    AssistantMessage,
     ChatMessage,
     ChatCompletionResponse,
     ResponseFormat,
@@ -33,29 +27,53 @@ from sdk.tools import ALL_TOOLS
 logger = logging.getLogger(__name__)
 
 
-class ChatClient:
-    """Minimal interface required by run_agent to talk to the LLM."""
-    model: str
+def _strip_think(text: str) -> str:
+    """Strip thinking tags and leaked XML fragments from LLM output."""
+    if not text:
+        return ""
+    text = re.sub(r" thinking.*? ", "", text, flags=re.DOTALL | re.IGNORECASE)
+    text = re.sub(
+        r"<[^>]*(?:think|anth|antth)[^>]*>.*?</[^>]*(?:think|anth|antth)[^>]*>",
+        "", text, flags=re.DOTALL | re.IGNORECASE,
+    )
+    m = re.match(r"^\s*<[^>]*(?:think|anth|antth)[^>]*>", text, flags=re.IGNORECASE)
+    if m:
+        rest = text[m.end():]
+        if not re.search(r"</[^>]*(?:think|anth|antth)[^>]*>", rest, re.IGNORECASE):
+            rest = re.sub(r"^.*?(?=\n\n|\Z)", "", rest, flags=re.DOTALL)
+        text = rest
+    text = re.sub(r"<function=[^>]*>.*?</function>", "", text, flags=re.DOTALL | re.IGNORECASE)
+    text = re.sub(
+        r"<(?:issue_description|reset|task|context)[^>]*>.*?</(?:issue_description|reset|task|context)",
+        "", text, flags=re.DOTALL | re.IGNORECASE,
+    )
+    m2 = re.match(
+        r"^\s*<(?:function=[^>]*|issue_description[^>]*|reset[^>]*|task[^>]*|context[^>]*|\|mask_start\|)",
+        text, flags=re.IGNORECASE,
+    )
+    if m2:
+        text = text[m2.end():]
+    text = re.sub(r"<\|mask_(?:start|end)\|>", "", text, flags=re.IGNORECASE)
+    return text.strip()
 
-    def chat(self, messages: list[ChatMessage], *, temperature: float,
-             max_tokens: int, tools: Optional[List[Dict]] = None,
-             response_format: Optional[ResponseFormat] = None) -> ChatCompletionResponse:
-        ...
+
+# ── Tool output pruning ──────────────────────────────────────────────
+
+def _prune_tool_output(name: str, content: str, max_chars: int = 8000) -> str:
+    """Prune large tool outputs to save context tokens while preserving useful info."""
+    if len(content) <= max_chars:
+        return content
+    half = max_chars // 2 - 100
+    kept_lines_start = content[:half].count("\n")
+    kept_lines_end = content[-half:].count("\n")
+    skipped_lines = content.count("\n") - kept_lines_start - kept_lines_end
+    truncated = (content[:half]
+                 + f"\n... [{skipped_lines} lines / {len(content) - max_chars:,} chars omitted] ...\n"
+                 + content[-half:])
+    return truncated
 
 
-def _assistant_message(content: str, *, stop_reason: str = "stop",
-                       error_message: str = None) -> Dict:
-    """Create an AssistantMessage dict (compatible with pi-ai shape)."""
-    msg = {
-        "role": "assistant",
-        "content": content,
-        "stopReason": stop_reason,
-        "usage": {"input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0, "totalTokens": 0},
-        "timestamp": int(time.time() * 1000),
-    }
-    if error_message:
-        msg["errorMessage"] = error_message
-    return msg
+
 
 
 def _msgs_to_dicts(msgs: list[ChatMessage]) -> list[dict]:
@@ -67,53 +85,39 @@ def _msgs_to_dicts(msgs: list[ChatMessage]) -> list[dict]:
 _DEFAULT_CONTEXT_WINDOW = 256_000
 
 
-def _build_default_hooks(on_step, terminal_tools, compaction_settings, context_window):
-    """Build the default hook chain that reproduces legacy behaviour."""
-    from sdk.hooks.compaction import CompactionSettings
-
-    parts = [RepetitiveCallGuard(), DuplicateOutputPruner()]
-    if terminal_tools:
-        parts.append(TerminalToolHook(terminal_tools))
-    if on_step:
-        parts.append(StepLogger(on_step))
-    parts.append(CompactionHook(compaction_settings or CompactionSettings(), context_window=context_window))
-    return CompositeHooks(*parts)
-
-
-def run_agent(client: ChatClient, messages: list[ChatMessage],
+def run_agent(llm, messages: list[ChatMessage],
               tool_executor: Callable[[str, Dict], tuple], *,
+              model: str,
               temperature: float = 0.5,
-              on_step: Optional[Callable] = None,
               tools: List[Dict] = None,
-              terminal_tools: Optional[set] = None,
               response_format: Optional[ResponseFormat] = None,
-              compaction_settings=None,
               context_window: int = _DEFAULT_CONTEXT_WINDOW,
-              hooks: AgentHooks = None) -> Dict:
+              hooks: AgentHooks = None) -> AssistantMessage:
     """Tool-calling agent loop with pluggable hooks.
 
     Runs until the model returns a text response (no tool calls).
 
     All behavioural extensions — repetitive guard, duplicate pruning,
     compaction, terminal tools — are implemented as hooks via
-    ``transform_context``, ``before_tool_call``, ``after_tool_call``,
-    ``should_stop_after_turn``.
+    ``before_llm_call``, ``after_llm_call``, ``before_tool_call``,
+    ``after_tool_call``.
 
     Args:
-        hooks: Optional AgentHooks to intercept agent loop events.
-               If None, default hooks are built from on_step/terminal_tools/compaction_settings.
+        model: Model name to pass to the LLM on each call.
+        hooks: AgentHooks to intercept agent loop events.
+               Built by the caller.
 
     Returns:
-        assistant message dict with "content" key (from API or synthesised).
+        AssistantMessage with content set to the final text response.
     """
     tools = tools or ALL_TOOLS
     _response_format = response_format
     _context_window = context_window
     msgs = list(messages)
 
-    # Build default hooks for backward compatibility when caller passes None
     if hooks is None:
-        hooks = _build_default_hooks(on_step, terminal_tools, compaction_settings, context_window)
+        from sdk.agent_hooks import CompositeHooks
+        hooks = CompositeHooks()
 
     def _emit(event_type: str, data: Dict):
         hooks.on_event(event_type, data)
@@ -122,36 +126,29 @@ def run_agent(client: ChatClient, messages: list[ChatMessage],
     while True:
         _iteration += 1
         ctx = HookContext(messages=msgs, tools=tools or [], iteration=_iteration,
-                          client=client)
+                          llm=llm)
 
-        # ── transform_context hook (before each LLM call) ────────────
-        # Hooks can modify messages (e.g. inject compaction instruction,
-        # prune old history) and override response_format for this turn.
-        _active_rf = _response_format
-        tcr = hooks.transform_context(msgs, _active_rf, ctx)
-        if tcr:
-            if tcr.messages is not None:
-                msgs = tcr.messages
-            if tcr.response_format is not None:
-                _active_rf = tcr.response_format
+        # ── before_llm_call hook (before each LLM call) ──────────────
+        # Hooks can modify messages (e.g. compaction, pruning).
+        r = hooks.before_llm_call(msgs, ctx)
+        if r is not None:
+            msgs = r
 
         # Refresh ctx after transform (msgs may have changed)
         ctx = HookContext(messages=msgs, tools=tools or [], iteration=_iteration,
-                          client=client)
+                          llm=llm)
 
-        _context_tokens = estimate_context_tokens(_msgs_to_dicts(msgs))
-        _clamped_max = clamp_max_tokens(4096, _context_tokens, _context_window)
-
-        logger.debug(f"[agent] iter {_iteration}: msgs={len(msgs)}, est_tokens={_context_tokens}, max_tokens={_clamped_max}")
+        logger.debug(f"[agent] iter {_iteration}: msgs={len(msgs)}")
 
         _emit("turn_start", {"iteration": _iteration})
 
-        resp = client.chat(
+        resp = llm.chat(
             msgs,
+            model=model,
             temperature=temperature,
-            max_tokens=_clamped_max,
+            max_tokens=4096,
             tools=tools if tools else None,
-            response_format=_active_rf,
+            response_format=_response_format,
         )
 
         if not resp.choices:
@@ -166,14 +163,7 @@ def run_agent(client: ChatClient, messages: list[ChatMessage],
             content = _strip_think(message.content or "")
             stop_reason = resp.choices[0].finish_reason
             _emit("turn_end", {"content": content})
-            return {
-                "role": "assistant",
-                "content": content,
-                "stopReason": stop_reason,
-                "usage": {k: (resp.usage.model_dump() if resp.usage else {}).get(k, 0)
-                          for k in ("input", "output", "cacheRead", "cacheWrite", "totalTokens")},
-                "timestamp": int(time.time() * 1000),
-            }
+            return AssistantMessage(content=content)
 
         # ── Tool calls → execute with hooks ───────────────────────────
         msgs.append(ChatMessage(role=message.role, content=message.content,
@@ -218,12 +208,7 @@ def run_agent(client: ChatClient, messages: list[ChatMessage],
             msgs.append(ChatMessage(role="tool", tool_call_id=tc.id, content=tool_content))
 
             if _terminate_batch:
-                return _assistant_message(final_content[:300])
-
-        # should_stop_after_turn hook
-        if hooks.should_stop_after_turn(msgs, ctx):
-            _emit("turn_end", {"reason": "should_stop"})
-            return _assistant_message("")
+                return AssistantMessage(content=final_content[:300])
 
     logger.warning(f"[agent] exiting with error after {_iteration} iterations: no valid response from LLM")
-    return _assistant_message("", stop_reason="error", error_message="no response")
+    return AssistantMessage(content="")

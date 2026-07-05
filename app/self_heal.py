@@ -17,7 +17,7 @@ def run(exc: Exception) -> None:
         f"### Traceback\n```\n{_tb.format_exception(exc)}\n```\n\n"
         "Find and fix the root cause so NYX can start cleanly."
     )
-    llm = LLM(url=config.llm_base_url, model=config.llm_model,
+    llm = LLM(url=config.llm_base_url,
                 api_key=config.llm_api_key, timeout=config.llm_timeout)
     tools = Tools(cwd=config.home)
 

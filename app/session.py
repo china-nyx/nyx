@@ -1,4 +1,4 @@
-"""Agent session helpers — shared on_step factory and session runner."""
+"""Agent session helpers — hook chain builder, step logging, and session runner."""
 import json
 import logging
 import re
@@ -88,7 +88,7 @@ def make_on_step(role: str, tid: str, sess_path: str = None):
         tid: task id
         sess_path: if set, append JSONL records to this file
 
-    Returns: callable(name, args, res, err) matching run_agent's on_step signature.
+    Returns: callable(name, args, res, err) used by StepLogger hook.
     """
     _step = [0]
     _last = [time.time()]
@@ -121,7 +121,7 @@ def run_session(llm, executor, *,
                 tools: List[Dict] = None, temperature: float = 0.5,
                 prune_sessions: bool = False,
                 log_run: bool = False) -> str:
-    """Run an agent session with shared setup (session file, on_step, run_agent).
+    """Run an agent session with shared setup (session file, hooks, run_agent).
 
     Returns the assistant's final text content.
 
@@ -150,7 +150,22 @@ def run_session(llm, executor, *,
 
     _on_step = make_on_step(role, tid, sess_path=sess_path)
 
-    _model = getattr(llm, "model", "")
+    # Build hooks — app layer decides which hooks to enable
+    from sdk.agent_hooks import CompositeHooks
+    from app.hooks import (
+        CompactionHook,
+        DuplicateOutputPruner,
+        RepetitiveCallGuard,
+        StepLogger,
+    )
+    _hooks = CompositeHooks(
+        RepetitiveCallGuard(),
+        DuplicateOutputPruner(),
+        StepLogger(_on_step),
+        CompactionHook(config.compaction_settings, context_window=config.context_window),
+    )
+
+    _model = config.llm_model
     _n_tools = len(tools) if tools else 0
     logger.info(f"[session] {role} start tid={tid}, model={_model}, temp={temperature}, tools={_n_tools}")
 
@@ -165,12 +180,13 @@ def run_session(llm, executor, *,
     res = run_agent(llm,
         messages=[ChatMessage(role="system", content=system_prompt)],
         tool_executor=executor, tools=tools,
-        temperature=temperature, on_step=_on_step,
-        compaction_settings=config.compaction_settings,
-        context_window=config.context_window)
+        model=config.llm_model,
+        temperature=temperature,
+        context_window=config.context_window,
+        hooks=_hooks)
 
     # Print thought on a separate line if present
-    thought = res.get("content") or ""
+    thought = res.content or ""
     if thought:
         logger.info(f"[thought] {thought}")
 

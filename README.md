@@ -33,8 +33,10 @@ crash ─▶ boot/main catches exception ─▶ self-heal → executor.run(hotfi
 ```
 app/        — boot, config, executor, hotfixer, log, main, prompts,
               scheduler, self_heal, daily_reflect, session, solver
-sdk/        — agent.py (loop), hooks/, llm.py, tools.py, fs.py,
-              git.py, skills.py, schemas.py
+              hooks/ — compaction, duplicate_pruner, repetitive_guard,
+                      step_logger, terminal_tool
+sdk/        — agent.py (loop), agent_hooks.py (protocol + composition),
+              llm.py, tools.py, fs.py, git.py, skills.py, schemas.py
 skills/     — built-in skills (loaded at runtime from source repo)
 deploy/     — systemd unit template
 tests/      — test suite
@@ -50,7 +52,9 @@ task/       — per-task persistent state (scheduler managed)
               └── <tid>/            state, priority, requirement.md, note.md, result.md
 skills/     — runtime skills (override built-in by name)
 mailbox/    — inbox/ only (requirements ingested to task/, files deleted after ingestion)
-sandbox/    — your work area (projects, research, data — put everything here)
+projects/   — long-running projects (each gets its own directory)
+toolbox/    — shared utilities (multi-project tools only)
+temp/       — scratch space (auto-cleaned on restart)
 ```
 
 ### OS Process Model
@@ -77,9 +81,9 @@ NYX manages requirements as tasks with an OS-like scheduler:
 
 NYX has two layers of self-improvement:
 
-**Daily reflection** (`skills/daily-reflect/`) — runs automatically every 24 hours. Performs a deep audit of source code, documentation, skills, memory files, tasks, and sandbox. Creates inbox tasks for actionable improvements.
+**Daily reflection** (`skills/daily-reflect/`) — runs automatically every 24 hours. Performs a deep audit of source code, documentation, skills, memory files, tasks, projects, and toolbox. Creates inbox tasks for actionable improvements.
 
-**Post-task reflection** (`skills/post-task-reflect/`) — triggered after each completed task. Lightweight: organizes memory and evaluates whether the work should be captured as a reusable skill.
+**Post-task reflection** (`skills/task-reflect/`) — triggered after each completed task. Lightweight: organizes memory and evaluates whether the work should be captured as a reusable skill.
 
 To customize daily reflection, place your own SKILL.md at `skills/daily-reflect/SKILL.md` (under cwd) — it shadows the built-in version.
 

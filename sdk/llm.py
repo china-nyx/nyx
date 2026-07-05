@@ -1,11 +1,10 @@
 """LLM client — HTTP layer for OpenAI-compatible API."""
 import json
 import logging
-import os
-import re
 import socket
 import time
 import urllib.request
+import uuid
 from typing import Dict, List, Optional
 
 from sdk.schemas import (
@@ -21,55 +20,10 @@ from sdk.schemas import (
 logger = logging.getLogger(__name__)
 
 
-# ── Strip thinking tags ─────────────────────────────────────────────
-
-def _strip_think(text: str) -> str:
-    """Strip thinking tags and leaked XML fragments from LLM output."""
-    if not text:
-        return ""
-    text = re.sub(r" thinking.*? ", "", text, flags=re.DOTALL | re.IGNORECASE)
-    text = re.sub(
-        r"<[^>]*(?:think|anth|antth)[^>]*>.*?</[^>]*(?:think|anth|antth)[^>]*>",
-        "", text, flags=re.DOTALL | re.IGNORECASE,
-    )
-    m = re.match(r"^\s*<[^>]*(?:think|anth|antth)[^>]*>", text, flags=re.IGNORECASE)
-    if m:
-        rest = text[m.end():]
-        if not re.search(r"</[^>]*(?:think|anth|antth)[^>]*>", rest, re.IGNORECASE):
-            rest = re.sub(r"^.*?(?=\n\n|\Z)", "", rest, flags=re.DOTALL)
-        text = rest
-    text = re.sub(r"<function=[^>]*>.*?</function>", "", text, flags=re.DOTALL | re.IGNORECASE)
-    text = re.sub(
-        r"<(?:issue_description|reset|task|context)[^>]*>.*?</(?:issue_description|reset|task|context)",
-        "", text, flags=re.DOTALL | re.IGNORECASE,
-    )
-    m2 = re.match(
-        r"^\s*<(?:function=[^>]*|issue_description[^>]*|reset[^>]*|task[^>]*|context[^>]*|\|mask_start\|)",
-        text, flags=re.IGNORECASE,
-    )
-    if m2:
-        text = text[m2.end():]
-    text = re.sub(r"<\|mask_(?:start|end)\|>", "", text, flags=re.IGNORECASE)
-    return text.strip()
-
-
-def _prune_tool_output(name: str, content: str, max_chars: int = 8000) -> str:
-    """Prune large tool outputs to save context tokens while preserving useful info."""
-    if len(content) <= max_chars:
-        return content
-    half = max_chars // 2 - 100
-    kept_lines_start = content[:half].count("\n")
-    kept_lines_end = content[-half:].count("\n")
-    skipped_lines = content.count("\n") - kept_lines_start - kept_lines_end
-    truncated = (content[:half]
-                 + f"\n... [{skipped_lines} lines / {len(content) - max_chars:,} chars omitted] ...\n"
-                 + content[-half:])
-    return truncated
-
 
 # ── Merged JSON Schema mode ────────────────────────────────────────
 
-def _build_schema(tools: List[Dict], business_schema: Optional[Dict] = None) -> Dict:
+def _build_schema(tools: List[Dict], business_schema: Dict) -> Dict:
     """Build a merged JSON Schema encoding both tool calls and business response.
 
     Schema structure:
@@ -107,15 +61,12 @@ def _build_schema(tools: List[Dict], business_schema: Optional[Dict] = None) -> 
             "description": "If you need to use tools, put them here. Otherwise leave empty.",
             "items": tool_items[0] if len(tool_items) == 1 else {"anyOf": tool_items},
         },
-    }
-
-    # Nest business schema under a "result" field
-    if business_schema:
-        properties["result"] = {
+        "result": {
             "type": "object",
             "description": "Final answer when no more tools are needed. Only provide when tools is empty.",
             **business_schema,
-        }
+        },
+    }
 
     return {
         "type": "json_schema",
@@ -137,16 +88,13 @@ def _extract_schema(response_format: ResponseFormat) -> Dict:
     return response_format.json_schema.schema if response_format.json_schema else {}
 
 
-def _parse_response(raw_text: str) -> ChatCompletionResponse:
+def _parse_response(raw_text: str, model: str) -> ChatCompletionResponse:
     """Parse JSON text from merged-schema mode into ChatCompletionResponse.
 
     Merged schema: {thought, tools, <business fields>}.
     - tools non-empty → tool_calls (model needs to call tools)
     - tools empty / missing → final result (business fields are the answer)
     """
-    import time
-    # OpenAI-compatible ID: chatcmpl-<timestamp>-<random>
-    import uuid
     req_id = f"chatcmpl-{int(time.time() * 1000)}-{uuid.uuid4().hex[:8]}"
 
     try:
@@ -170,7 +118,7 @@ def _parse_response(raw_text: str) -> ChatCompletionResponse:
             })
         content = parsed.get("thought", "")
         return ChatCompletionResponse(
-            id=req_id, object="chat.completion", model="merged",
+            id=req_id, object="chat.completion", model=model,
             created=int(time.time()),
             choices=[ChatChoice(
                 index=0,
@@ -194,7 +142,7 @@ def _parse_response(raw_text: str) -> ChatCompletionResponse:
         content = str(result)
 
     return ChatCompletionResponse(
-        id=req_id, object="chat.completion", model="merged",
+        id=req_id, object="chat.completion", model=model,
         created=int(time.time()),
         choices=[ChatChoice(
             index=0,
@@ -213,10 +161,9 @@ def _parse_response(raw_text: str) -> ChatCompletionResponse:
 class LLM:
     """HTTP client for OpenAI-compatible LLM API."""
 
-    def __init__(self, url: str, model: str, api_key: str = "", timeout: int = 300):
+    def __init__(self, url: str, api_key: str = "", timeout: int = 300):
         base_url = url.rstrip("/")
         self.url = base_url + "/chat/completions"
-        self.model = model
         self.api_key = api_key
         self.timeout = timeout
         self._opener = urllib.request.build_opener(urllib.request.ProxyHandler())
@@ -256,7 +203,8 @@ class LLM:
 
         raise last_err
 
-    def chat(self, messages: list[ChatMessage], *, temperature: float = 0.6,
+    def chat(self, messages: list[ChatMessage], *, model: str,
+             temperature: float = 0.6,
              max_tokens: int = 2048, tools: List[Dict] = None,
              response_format: Optional[ResponseFormat] = None) -> ChatCompletionResponse:
         """Non-streaming chat completion.
@@ -267,42 +215,42 @@ class LLM:
         answer in a single response.  The caller receives a standard
         ``ChatCompletionResponse`` regardless of the internal mode.
         """
+        # Serialize messages — ensure non-assistant roles always have 'content'
         _msgs = []
         for m in messages:
             d = m.model_dump(exclude_none=True)
-            # Ensure non-assistant roles always have 'content' (llama-server rejects missing content)
             if d.get("role") != "assistant" and "content" not in d:
                 d["content"] = ""
             _msgs.append(d)
-        _merged = bool(tools and response_format)
 
+        # Build request body
+        body: Dict = {
+            "model": model, "messages": _msgs,
+            "temperature": temperature, "max_tokens": max_tokens,
+            "stream": False,
+        }
 
-
-        if _merged:
+        if tools and response_format:
+            # Merged-schema mode: encode tools into the JSON schema
             business_schema = _extract_schema(response_format)
-            merged = _build_schema(tools, business_schema)
-            body = {
-                "model": self.model, "messages": _msgs,
-                "temperature": temperature, "max_tokens": max_tokens,
-                "stream": False, "response_format": merged,
-            }
-            raw = self._post(body)
+            body["response_format"] = _build_schema(tools, business_schema)
+        else:
+            if tools:
+                body["tools"] = tools
+            if response_format:
+                body["response_format"] = response_format.model_dump(exclude_none=True)
+
+        raw = self._post(body)
+
+        if tools and response_format:
+            # Parse merged-schema response
             msg = raw["choices"][0]["message"]
-            resp = _parse_response(msg.get("content", ""))
+            resp = _parse_response(msg.get("content", ""), model)
             content_len = len(resp.choices[0].message.content or "")
             logger.debug(f"[llm] merged response: {content_len} chars")
             return resp
 
-        body = {
-            "model": self.model, "messages": _msgs,
-            "temperature": temperature, "max_tokens": max_tokens,
-            "stream": False,
-        }
-        if tools:
-            body["tools"] = tools
-        if response_format:
-            body["response_format"] = response_format.model_dump(exclude_none=True)
-        raw = self._post(body)
+        # Standard OpenAI-compatible response
         resp = ChatCompletionResponse.model_validate(raw)
         usage = (resp.usage.model_dump() if resp.usage else {})
         logger.debug(f"[llm] response: {usage}")

@@ -1,7 +1,7 @@
 """Hook implementations — one per file.
 
-Import from sdk.hooks:
-    from sdk.hooks import RepetitiveCallGuard, DuplicateOutputPruner, ...
+Import from app.hooks:
+    from app.hooks import RepetitiveCallGuard, DuplicateOutputPruner, ...
 """
 from .repetitive_guard import RepetitiveCallGuard
 from .duplicate_pruner import DuplicateOutputPruner

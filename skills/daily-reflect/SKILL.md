@@ -3,7 +3,7 @@ name: daily-reflect
 description: NYX's periodic self-introspection cycle. Audits the entire workspace and drives continuous improvement. Every cycle should leave things in a slightly better state.
 ---
 
-# Self-Reflect Skill
+# Daily Reflection Skill
 
 This is NYX's mechanism for **continuous self-improvement**. Unlike task-solving, this is meta-cognition — understanding what NYX knows, what it's doing, what needs fixing, and how to get better.
 
@@ -48,13 +48,15 @@ Go through each area below. For each: **look at the actual state**, compare it t
 - Is task/index.md getting too large? Prune very old completed entries if needed.
 - Check if any tasks need priority adjustment
 
-### 6. Sandbox (sandbox/)
+### 6. Projects and Toolbox (projects/, toolbox/)
 
-- Is the sandbox organized and navigable?
+- Is projects/INDEX.md accurate with current project list and status?
 - Are there stale temp files, artifacts, or empty directories to clean up?
 - Should any work products be archived or summarized?
+- Check toolbox for stale tools, missing .desc files, README drift
+- Verify cron entries point to valid scripts
 
-### 7. Self-Reflect Itself
+### 7. Daily Reflection Itself
 
 - Is this skill's procedure still optimal? What steps add value, which are redundant?
 - Are there new areas to audit that aren't covered?

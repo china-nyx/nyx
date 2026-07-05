@@ -1,6 +1,6 @@
 """Agent hooks — protocol, result types, and composition.
 
-All hook *implementations* live in ``sdk/hooks/<name>.py`` (one per file).
+Hook implementations live in the app layer.
 This module provides the Protocol, result dataclasses, CompositeHooks, and
 the shared HookContext snapshot.
 """
@@ -10,7 +10,7 @@ import logging
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Protocol, runtime_checkable
 
-from sdk.schemas import ChatMessage, ResponseFormat
+from sdk.schemas import ChatMessage
 
 logger = logging.getLogger(__name__)
 
@@ -35,16 +35,6 @@ class AfterToolCallResult:
     terminate: bool = False             # stop agent after this batch
 
 
-@dataclass
-class TransformContextResult:
-    """Return from transform_context to modify messages/response_format before the LLM call.
-
-    Omitted fields keep their current values.
-    """
-    messages: Optional[List[ChatMessage]] = None   # replace message history
-    response_format: Optional[ResponseFormat] = None  # override response_format for this turn
-
-
 # ── Hook context (snapshot passed to each hook) ───────────────────────
 
 @dataclass
@@ -53,7 +43,7 @@ class HookContext:
     messages: List[ChatMessage]         # current message history
     tools: List[Dict]                   # active tool definitions
     iteration: int                      # current loop iteration
-    client: Optional[Any] = None        # ChatClient for hook-side LLM calls (e.g. compaction)
+    llm: Optional[Any] = None           # LLM instance for hook-side calls (e.g. compaction)
 
 
 # ── Hook Protocol (all methods optional — missing = no-op) ────────────
@@ -62,23 +52,18 @@ class HookContext:
 class AgentHooks(Protocol):
     """Optional hooks for the agent loop. Implement any subset."""
 
+    # ── LLM call boundary hooks ──────────────────────────────────────
+    def before_llm_call(self, messages: List[ChatMessage],
+                        ctx: HookContext) -> Optional[List[ChatMessage]]: ...
+    def after_llm_call(self, message: Dict[str, Any],
+                       ctx: HookContext) -> Optional[Dict[str, Any]]: ...
+
     # ── Tool call hooks ──────────────────────────────────────────────
     def before_tool_call(self, name: str, args: Dict[str, Any],
                          ctx: HookContext) -> Optional[BeforeToolCallResult]: ...
     def after_tool_call(self, name: str, args: Dict[str, Any],
                         result: str, is_error: bool,
                         ctx: HookContext) -> Optional[AfterToolCallResult]: ...
-
-    # ── Turn-level hooks ─────────────────────────────────────────────
-    def should_stop_after_turn(self, messages: List[ChatMessage],
-                               ctx: HookContext) -> bool: ...
-
-    # ── Context transform (before each LLM call) ─────────────────────
-    def transform_context(self, messages: List[ChatMessage],
-                          response_format: Optional[ResponseFormat],
-                          ctx: HookContext) -> Optional[TransformContextResult]: ...
-
-
 
     # ── Observer (read-only) ─────────────────────────────────────────
     def on_event(self, event_type: str, data: Dict[str, Any]): ...
@@ -91,6 +76,26 @@ class CompositeHooks:
 
     def __init__(self, *hook_sets: Optional[AgentHooks]):
         self._hooks = [h for h in hook_sets if h is not None]
+
+    # ── LLM call boundary hooks ──────────────────────────────────────
+
+    def before_llm_call(self, messages: List[ChatMessage],
+                        ctx: HookContext) -> Optional[List[ChatMessage]]:
+        cur = messages
+        for h in self._hooks:
+            r = getattr(h, 'before_llm_call', lambda *a: None)(cur, ctx)
+            if r is not None:
+                cur = r
+        return cur if cur is not messages else None
+
+    def after_llm_call(self, message: Dict[str, Any],
+                       ctx: HookContext) -> Optional[Dict[str, Any]]:
+        cur = message
+        for h in self._hooks:
+            r = getattr(h, 'after_llm_call', lambda *a: None)(cur, ctx)
+            if r is not None:
+                cur = r
+        return cur if cur is not message else None
 
     # ── Tool call hooks ──────────────────────────────────────────────
 
@@ -119,33 +124,6 @@ class CompositeHooks:
                     terminate = True
         if content != result or error != is_error or terminate:
             return AfterToolCallResult(content=content, is_error=error, terminate=terminate)
-        return None
-
-    # ── Turn-level hooks ─────────────────────────────────────────────
-
-    def should_stop_after_turn(self, messages: List[ChatMessage],
-                               ctx: HookContext) -> bool:
-        for h in self._hooks:
-            if getattr(h, 'should_stop_after_turn', lambda *a: False)(messages, ctx):
-                return True
-        return False
-
-    # ── Context transform (chain: each hook sees previous output) ────
-
-    def transform_context(self, messages: List[ChatMessage],
-                          response_format: Optional[ResponseFormat],
-                          ctx: HookContext) -> Optional[TransformContextResult]:
-        cur_msgs = messages
-        cur_rf = response_format
-        for h in self._hooks:
-            r = getattr(h, 'transform_context', lambda *a: None)(cur_msgs, cur_rf, ctx)
-            if r:
-                if r.messages is not None:
-                    cur_msgs = r.messages
-                if r.response_format is not None:
-                    cur_rf = r.response_format
-        if cur_msgs is not messages or cur_rf is not response_format:
-            return TransformContextResult(messages=cur_msgs, response_format=cur_rf)
         return None
 
     # ── Observer ─────────────────────────────────────────────────────

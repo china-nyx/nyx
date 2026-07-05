@@ -37,7 +37,6 @@ class Agent:
     def __init__(self, llm: LLM = None):
         self.llm = llm or LLM(
             url=config.llm_base_url,
-            model=config.llm_model,
             api_key=config.llm_api_key,
             timeout=config.llm_timeout,
         )
@@ -60,14 +59,14 @@ class Agent:
 
     def _maybe_post_task_reflect(self, tid: str, requirement: str):
         """Drop a lightweight post-task reflection inbox file after task completion."""
-        skill_file = config.skills_dir / "post-task-reflect" / "SKILL.md"
+        skill_file = config.skills_dir / "task-reflect" / "SKILL.md"
         if not skill_file.exists():
-            skill_file = config.repo / "skills" / "post-task-reflect" / "SKILL.md"
+            skill_file = config.repo / "skills" / "task-reflect" / "SKILL.md"
         if not skill_file.exists():
             return
 
         requirement_text = skill_file.read_text(encoding="utf-8")
-        inbox_file = config.inbox_dir / f"50-post-task-reflect-{tid}.md"
+        inbox_file = config.inbox_dir / f"50-task-reflect-{tid}.md"
         # Append the completed task's requirement so the reflector knows what was done
         full_req = f"{requirement_text}\n\n## Completed Task\n{requirement}"
         inbox_file.write_text(full_req, encoding="utf-8")

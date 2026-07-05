@@ -5,7 +5,7 @@ from pathlib import Path
 
 from pydantic import BaseModel, Field, field_validator
 
-from sdk.hooks.compaction import CompactionSettings
+from app.hooks.compaction import CompactionSettings
 
 
 class Config(BaseModel):
@@ -73,21 +73,25 @@ class Config(BaseModel):
         return self.home / "skills"
 
     @property
-    def sandbox_dir(self) -> Path:
-        return self.home / "sandbox"
-
-    @property
     def memory_dir(self) -> Path:
         return self.home / "memory"
 
     @property
+    def projects_dir(self) -> Path:
+        return self.home / "projects"
+
+    @property
+    def toolbox_dir(self) -> Path:
+        return self.home / "toolbox"
+
+    @property
     def temp_dir(self) -> Path:
-        return self.sandbox_dir / "temp"
+        return self.home / "temp"
 
     @property
     def runtime_dirs(self) -> list:
         return [self.log_dir, self.inbox_dir, self.task_dir, self.skills_dir,
-                self.sandbox_dir, self.memory_dir, self.temp_dir]
+                self.memory_dir, self.projects_dir, self.toolbox_dir, self.temp_dir]
 
     @classmethod
     def from_settings(cls, *, repo: Path, home: Path):
