@@ -26,11 +26,10 @@ class BeforeToolCallResult:
 
 @dataclass(frozen=True)
 class AfterLlmCallResult:
-    """Return from after_llm_call to modify the message or control flow.
+    """Return from after_llm_call to control agent loop flow.
 
     Omitted fields (None) keep their original values.
     """
-    message: Optional[Dict[str, Any]] = None       # replace message fields
     continue_loop: bool = False                     # if True, don't exit even with no tool calls
     messages_to_append: List[ChatMessage] = None   # append these before continuing
 
@@ -101,21 +100,17 @@ class CompositeHooks:
 
     def after_llm_call(self, message: Dict[str, Any],
                        ctx: HookContext) -> Optional[AfterLlmCallResult]:
-        combined_msg: Optional[Dict[str, Any]] = None
         continue_loop = False
         append_msgs: List[ChatMessage] = []
         for h in self._hooks:
             r = getattr(h, 'after_llm_call', lambda *a: None)(message, ctx)
             if isinstance(r, AfterLlmCallResult):
-                if r.message is not None:
-                    combined_msg = r.message
                 if r.continue_loop:
                     continue_loop = True
                 if r.messages_to_append:
                     append_msgs.extend(r.messages_to_append)
-        if combined_msg is not None or continue_loop or append_msgs:
+        if continue_loop or append_msgs:
             return AfterLlmCallResult(
-                message=combined_msg,
                 continue_loop=continue_loop,
                 messages_to_append=append_msgs or None,
             )

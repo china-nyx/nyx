@@ -18,7 +18,6 @@ from sdk.agent_hooks import (
 from sdk.schemas import (
     AssistantMessage,
     ChatMessage,
-    ChatResponseMessage,
     ResponseFormat,
 )
 from sdk.tools import ALL_TOOLS
@@ -103,8 +102,6 @@ def run_agent(llm, messages: list[ChatMessage],
 
         # ── after_llm_call hook (after each LLM response) ────────────
         r = hooks.after_llm_call(message.model_dump(), ctx)
-        if r and r.message is not None:
-            message = ChatResponseMessage(**r.message)
 
         tool_calls = message.tool_calls or []
 
