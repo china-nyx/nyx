@@ -120,12 +120,33 @@ def run_agent(llm, messages: list[ChatMessage],
                 content=_task_content if _task_content is not None else content,
             )
 
-        # ── Tool calls → execute with hooks ───────────────────────────
+        # ── Tool calls → validate + execute with hooks ────────────────
+        # Filter out tool calls with malformed JSON arguments before appending
+        # the assistant message.  If ALL are invalid, discard the entire turn
+        # and let the LLM retry.
+        _valid_calls: List = []
+        _invalid_names: List[str] = []
+        for tc in tool_calls:
+            raw = tc.function.arguments or "{}"
+            try:
+                json.loads(raw)
+                _valid_calls.append(tc)
+            except (json.JSONDecodeError, TypeError):
+                _invalid_names.append(tc.function.name)
+                logger.warning(
+                    f"[agent] dropping malformed tool call "{tc.function.name}": "
+                    f"{raw[:120]}…")
+
+        if not _valid_calls:
+            logger.warning(
+                f"[agent] all tool calls invalid ({_invalid_names}), retrying")
+            continue
+
         msgs.append(ChatMessage(role=message.role, content=message.content,
-                                 tool_calls=[tc.model_dump() for tc in tool_calls] if tool_calls else None))
+                                 tool_calls=[tc.model_dump() for tc in _valid_calls]))
 
         _terminate_batch = False
-        for tc in tool_calls:
+        for tc in _valid_calls:
             fn = tc.function
             name = fn.name
             try:

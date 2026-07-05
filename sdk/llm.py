@@ -221,21 +221,7 @@ class LLM:
             d = m.model_dump(exclude_none=True)
             if d.get("role") != "assistant" and "content" not in d:
                 d["content"] = ""
-            # Sanitize tool call arguments — LLM may return malformed JSON
-            # (e.g. missing closing quotes).  If we send bad args back to the
-            # server it will reject the whole request with HTTP 500.
-            for tc in d.get("tool_calls") or []:
-                if isinstance(tc, dict):
-                    fn = tc.get("function")
-                    if isinstance(fn, dict):
-                        raw = fn.get("arguments", "{}")
-                        try:
-                            json.loads(raw)
-                        except (json.JSONDecodeError, TypeError):
-                            logger.warning(
-                                f"[llm] sanitizing malformed tool call args "
-                                f"for {fn.get('name', '?')}: {raw[:120]}…")
-                            fn["arguments"] = "{}"
+
             _msgs.append(d)
 
         # Build request body
