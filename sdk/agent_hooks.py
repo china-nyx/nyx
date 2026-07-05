@@ -35,8 +35,8 @@ class TurnCompleteResult:
 
 
 @dataclass(frozen=True)
-class ToolCallsResult:
-    """Return from on_tool_calls to filter or modify tool calls.
+class BeforeToolCallsResult:
+    """Return from before_tool_calls to filter or modify the batch of tool calls.
 
     ``tool_calls=None`` → skip this turn entirely (re-prompt LLM).
     ``tool_calls=[]`` → drop all tool calls, re-prompt LLM.
@@ -76,9 +76,9 @@ class AgentHooks(Protocol):
     # ── LLM call boundary hooks ──────────────────────────────────────
     def before_llm_call(self, messages: List[ChatMessage],
                         ctx: HookContext) -> Optional[List[ChatMessage]]: ...
-    def on_tool_calls(self, message: 'ChatResponseMessage',
-                      tool_calls: List,
-                      ctx: HookContext) -> Optional[ToolCallsResult]: ...
+    def before_tool_calls(self, message: 'ChatResponseMessage',
+                          tool_calls: List,
+                          ctx: HookContext) -> Optional[BeforeToolCallsResult]: ...
     def on_turn_complete(self, message: 'ChatResponseMessage',
                           ctx: HookContext) -> Optional[TurnCompleteResult]: ...
 
@@ -112,17 +112,17 @@ class CompositeHooks:
                 cur = r
         return cur if cur is not messages else None
 
-    def on_tool_calls(self, message: 'ChatResponseMessage',
-                      tool_calls: List,
-                      ctx: HookContext) -> Optional[ToolCallsResult]:
+    def before_tool_calls(self, message: 'ChatResponseMessage',
+                          tool_calls: List,
+                          ctx: HookContext) -> Optional[BeforeToolCallsResult]:
         filtered_tc = list(tool_calls)
         for h in self._hooks:
-            r = getattr(h, 'on_tool_calls', lambda *a: None)(message, filtered_tc, ctx)
-            if isinstance(r, ToolCallsResult):
+            r = getattr(h, 'before_tool_calls', lambda *a: None)(message, filtered_tc, ctx)
+            if isinstance(r, BeforeToolCallsResult):
                 if r.tool_calls is not None:
                     filtered_tc = r.tool_calls
         if filtered_tc is not tool_calls:
-            return ToolCallsResult(tool_calls=filtered_tc)
+            return BeforeToolCallsResult(tool_calls=filtered_tc)
         return None
 
     def on_turn_complete(self, message: 'ChatResponseMessage',

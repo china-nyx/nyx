@@ -1,6 +1,6 @@
 """Tool call validator — drops tool calls with malformed JSON arguments.
 
-Plugs into ``on_tool_calls`` so that invalid tool calls never enter the
+Plugs into ``before_tool_calls`` so that invalid tool calls never enter the
 message history (preventing HTTP 500 from llama-server).  If all tool calls
 in a turn are invalid the hook signals the agent loop to skip the turn
 entirely and re-prompt the model.
@@ -15,7 +15,7 @@ from typing import List, Optional
 
 from sdk.agent_hooks import (
     HookContext,
-    ToolCallsResult,
+    BeforeToolCallsResult,
 )
 from sdk.schemas import ChatResponseMessage
 
@@ -25,9 +25,9 @@ logger = logging.getLogger(__name__)
 class ToolCallValidator:
     """Filter out tool calls whose ``arguments`` field is not valid JSON."""
 
-    def on_tool_calls(self, message: ChatResponseMessage,
-                      tool_calls: List,
-                      ctx: HookContext) -> Optional[ToolCallsResult]:
+    def before_tool_calls(self, message: ChatResponseMessage,
+                          tool_calls: List,
+                          ctx: HookContext) -> Optional[BeforeToolCallsResult]:
         _valid: list = []
         _dropped: list[str] = []
 
@@ -47,9 +47,9 @@ class ToolCallValidator:
             logger.warning(
                 f"[tool-call-validator] all calls invalid ({_dropped}), "
                 f"skipping turn")
-            return ToolCallsResult(tool_calls=None)
+            return BeforeToolCallsResult(tool_calls=None)
 
         logger.info(
             f"[tool-call-validator] kept {len(_valid)}, "
             f"dropped {len(_dropped)}")
-        return ToolCallsResult(tool_calls=_valid)
+        return BeforeToolCallsResult(tool_calls=_valid)
