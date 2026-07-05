@@ -193,7 +193,7 @@ def run_session(llm, executor, *,
         temperature=temperature,
         hooks=_hooks)
 
-    task_output = (result.message.content or "").strip()
+    task_output = (result.content or "").strip()
     reflection = None
     if _reflect_hook and _reflect_hook.reflection:
         reflection = _reflect_hook.reflection.strip() or None
