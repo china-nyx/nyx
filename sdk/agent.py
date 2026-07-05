@@ -120,10 +120,10 @@ def run_agent(llm, messages: list[ChatMessage],
                 content=_task_content if _task_content is not None else content,
             )
 
-        # ── after_llm_call hook (filter/modify tool calls) ───────────
-        from sdk.agent_hooks import AfterLlmCallResult
-        _r = hooks.after_llm_call(message, tool_calls, ctx)
-        if isinstance(_r, AfterLlmCallResult):
+        # ── on_tool_calls hook (filter/modify tool calls) ────────────
+        from sdk.agent_hooks import ToolCallsResult
+        _r = hooks.on_tool_calls(message, tool_calls, ctx)
+        if isinstance(_r, ToolCallsResult):
             if _r.tool_calls is None or not _r.tool_calls:
                 logger.warning("[agent] all tool calls filtered by hook, retrying")
                 continue
