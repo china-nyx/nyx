@@ -1,7 +1,7 @@
 ---
 name: project
 description: Create and manage projects under projects/. Each project gets its own directory with scripts, data, and state files. Register every project in projects/INDEX.md.
-related_skills: toolbox, daily-reflect
+related_skills: toolbox
 ---
 
 # Project Skill

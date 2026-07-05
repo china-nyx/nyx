@@ -1,7 +1,7 @@
 ---
 name: task-reflect
 description: Organize memory and evaluate if the current workflow should be captured as a reusable skill.
-related_skills: memory, daily-reflect
+
 ---
 
 # Task Reflect
