@@ -38,10 +38,11 @@ class TurnCompleteResult:
 class AfterLlmCallResult:
     """Return from after_llm_call to filter or modify tool calls.
 
-    Omitted fields (None) keep their original values.
+    ``tool_calls=None`` → skip this turn entirely (re-prompt LLM).
+    ``tool_calls=[]`` → drop all tool calls, re-prompt LLM.
+    ``tool_calls=[...]`` → use only these valid calls.
     """
-    tool_calls: Optional[List] = None   # filtered/modified tool call list; None = skip this turn entirely
-    messages_to_append: List[ChatMessage] = None  # extra messages to append alongside the assistant message
+    tool_calls: Optional[List] = None  # None = skip turn; list = filtered calls
 
 
 @dataclass(frozen=True)
@@ -115,19 +116,13 @@ class CompositeHooks:
                        tool_calls: List,
                        ctx: HookContext) -> Optional[AfterLlmCallResult]:
         filtered_tc = list(tool_calls)
-        append_msgs: List[ChatMessage] = []
         for h in self._hooks:
             r = getattr(h, 'after_llm_call', lambda *a: None)(message, filtered_tc, ctx)
             if isinstance(r, AfterLlmCallResult):
                 if r.tool_calls is not None:
                     filtered_tc = r.tool_calls
-                if r.messages_to_append:
-                    append_msgs.extend(r.messages_to_append)
-        if filtered_tc is not tool_calls or append_msgs:
-            return AfterLlmCallResult(
-                tool_calls=filtered_tc,
-                messages_to_append=append_msgs or None,
-            )
+        if filtered_tc is not tool_calls:
+            return AfterLlmCallResult(tool_calls=filtered_tc)
         return None
 
     def on_turn_complete(self, message: 'ChatResponseMessage',

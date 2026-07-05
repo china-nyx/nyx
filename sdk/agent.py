@@ -124,15 +124,10 @@ def run_agent(llm, messages: list[ChatMessage],
         from sdk.agent_hooks import AfterLlmCallResult
         _r = hooks.after_llm_call(message, tool_calls, ctx)
         if isinstance(_r, AfterLlmCallResult):
-            if _r.tool_calls is None:
-                # hook signals to skip this turn entirely
-                continue
-            tool_calls = _r.tool_calls
-            if not tool_calls:
+            if _r.tool_calls is None or not _r.tool_calls:
                 logger.warning("[agent] all tool calls filtered by hook, retrying")
                 continue
-            if _r.messages_to_append:
-                msgs.extend(_r.messages_to_append)
+            tool_calls = _r.tool_calls
 
         msgs.append(ChatMessage(role=message.role, content=message.content,
                                  tool_calls=[tc.model_dump() for tc in tool_calls]))
