@@ -54,7 +54,7 @@ Go through each area below. For each: **look at the actual state**, compare it t
 - Is projects/INDEX.md accurate with current project list and status?
 - Are there stale temp files, artifacts, or empty directories to clean up?
 - Should any work products be archived or summarized?
-- Check toolbox for stale tools, missing .desc files, README drift
+- Check toolbox for stale tools or undocumented entries
 - Verify cron entries point to valid scripts
 
 ### 7. Daily Reflection Itself
